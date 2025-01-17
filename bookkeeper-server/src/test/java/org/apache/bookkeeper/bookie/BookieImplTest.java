@@ -1,6 +1,7 @@
 package org.apache.bookkeeper.bookie;
 
 import org.apache.bookkeeper.conf.ServerConfiguration;
+import org.apache.bookkeeper.conf.TestBKConfiguration;
 import org.apache.bookkeeper.helper.TmpDirs;
 import org.apache.bookkeeper.net.BookieId;
 import org.apache.bookkeeper.net.BookieSocketAddress;
@@ -11,13 +12,15 @@ import org.junit.experimental.runners.Enclosed;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
-import java.io.File;
 import java.io.IOException;
-import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.Collection;
 
 import static org.junit.Assert.*;
+import static org.mockito.Mockito.*;
+
+import java.io.File;
+import java.net.UnknownHostException;
 
 @RunWith(value = Enclosed.class)
 public class BookieImplTest {
@@ -262,5 +265,103 @@ public class BookieImplTest {
             }
         }
     }
+
+
+
+    @RunWith(Parameterized.class)
+    public static class BookieImplMountLedgerStorageOfflineParameterizedTest {
+
+        private final ServerConfiguration conf;
+        private final LedgerStorage ledgerStorage;
+        private final boolean expectException;
+
+        public BookieImplMountLedgerStorageOfflineParameterizedTest(ServerConfiguration conf, LedgerStorage ledgerStorage, boolean expectException) {
+            this.conf = conf;
+            this.ledgerStorage = ledgerStorage;
+            this.expectException = expectException;
+        }
+
+        @Parameterized.Parameters
+        public static Collection<Object[]> data() {
+            return Arrays.asList(new Object[][]{
+                    // valid
+                    {createValidConfig(), createMockLedgerStorage(false), false},   // conf valida con ledgerStorage non inizializzato
+
+                    // invalid
+                    {null, createMockLedgerStorage(false), true},                  // conf null
+                    {createInvalidConfig(), createMockLedgerStorage(false), true}, // conf invalida con ledgerStorage non inizializzato
+                    {createValidConfig(), createMockLedgerStorage(true), true},    // conf valida con ledgerStorage già inizializzato
+                    {createPartialConfigOnlyUsageThreshold(), createMockLedgerStorage(false), true}, // conf parziale con ledgerStorage non inizializzato
+                    {createPartialConfigOnlyWarnThreshold(), createMockLedgerStorage(false), true}, // conf parziale con ledgerStorage non inizializzato
+                    // in questo caso, quando viene configurata solo la warn threshold, e non c'è la threshold, mi apsetto che il meotodo sollevi un'eccezione
+                    // ma invece non viene sollevata. Anche in questo caso lascio cosi e poi vedo se è effettivamente un problema
+                    {createValidConfig(), null, false},
+            });
+        }
+
+        private static ServerConfiguration createValidConfig() {
+            ServerConfiguration conf = TestBKConfiguration.newServerConfiguration();
+            conf.setLedgerDirNames(new String[]{"/tmp/ledgerDirs"});
+            conf.setDiskUsageThreshold(0.8f);
+            conf.setDiskUsageWarnThreshold(0.7f);
+            return conf;
+        }
+
+        private static ServerConfiguration createInvalidConfig() {
+            ServerConfiguration conf = TestBKConfiguration.newServerConfiguration();
+            conf.setDiskUsageThreshold(0.7f);
+            conf.setDiskUsageWarnThreshold(0.8f); // Warn > Threshold => invalida
+            // conf vuota o non valida
+            conf.setLedgerDirNames(null); // no directory impostata
+            return conf;
+        }
+
+        private static ServerConfiguration createPartialConfigOnlyUsageThreshold() {
+            ServerConfiguration conf = TestBKConfiguration.newServerConfiguration();
+            conf.setDiskUsageThreshold(0.6f);
+            // conf vuota o non valida
+            conf.setLedgerDirNames(null); // no directory impostata
+            return conf;
+        }
+
+        private static ServerConfiguration createPartialConfigOnlyWarnThreshold() {
+            ServerConfiguration conf = TestBKConfiguration.newServerConfiguration();
+            conf.setDiskUsageWarnThreshold(0.6f);
+            // conf vuota o non valida
+            conf.setLedgerDirNames(null); // no directory impostata
+            return conf;
+        }
+
+        private static LedgerStorage createMockLedgerStorage(boolean alreadyInitialized) {
+            LedgerStorage mockStorage = mock(LedgerStorage.class);
+            if (alreadyInitialized) {
+                try {
+                    doThrow(new IllegalStateException("LedgerStorage already initialized"))
+                            .when(mockStorage).initialize(any(), any(), any(), any(), any(), any());
+                } catch (IOException e) {
+                    fail("Unexpected IOException during mock setup");
+                }
+            }
+            return mockStorage;
+        }
+
+        @Test
+        public void testMountLedgerStorageOffline() {
+            try {
+                LedgerStorage result = BookieImpl.mountLedgerStorageOffline(conf, ledgerStorage);
+                if (expectException) {
+                    fail("Expected exception but none was thrown.");
+                }
+                assertNotNull("Resulting LedgerStorage should not be null", result);
+                assertEquals("Returned LedgerStorage should match input LedgerStorage when provided",
+                        ledgerStorage != null ? ledgerStorage : result, result);
+            } catch (Exception e) {
+                if (!expectException) {
+                    fail("Unexpected exception: " + e.getMessage());
+                }
+            }
+        }
+    }
+
 
 }
