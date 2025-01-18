@@ -2,20 +2,23 @@ package org.apache.bookkeeper.bookie;
 
 import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.bookkeeper.conf.TestBKConfiguration;
+import org.apache.bookkeeper.helper.DeleteTemporaryDir;
+import org.apache.bookkeeper.helper.DirectoryTestHelper;
 import org.apache.bookkeeper.helper.TmpDirs;
 import org.apache.bookkeeper.net.BookieId;
 import org.apache.bookkeeper.net.BookieSocketAddress;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.experimental.runners.Enclosed;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.Arrays;
 import java.util.Collection;
 
+import static org.apache.bookkeeper.helper.DirectoryTestHelper.*;
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 
@@ -363,5 +366,146 @@ public class BookieImplTest {
         }
     }
 
+
+    @RunWith(Parameterized.class)
+    public static class FormatParameterizedTest {
+
+        private final boolean isInteractive;
+        private final boolean force;
+        private final boolean expectedResult;
+        private final DirectoryTestHelper journalDirs;
+
+        private final DirectoryTestHelper ledgerDirs;
+
+        private final DirectoryTestHelper indexDirs;
+
+        private final DirectoryTestHelper gcEntryLogMetadataCachePath;
+        private final String input;
+        private final boolean expException;
+
+        private ServerConfiguration conf;
+        private static InputStream originalSystemIn;
+
+        public FormatParameterizedTest(DirectoryTestHelper journalDirs, DirectoryTestHelper ledgerDirs, DirectoryTestHelper indexDirs, DirectoryTestHelper gcEntryLogMetadataCachePath,
+                                       boolean isInteractive, boolean force, String input,
+                                       boolean expectedResult, boolean expException) {
+            this.isInteractive = isInteractive;
+            this.force = force;
+            this.expectedResult = expectedResult;
+            this.journalDirs = journalDirs;
+            this.ledgerDirs = ledgerDirs;
+            this.indexDirs = indexDirs;
+            this.gcEntryLogMetadataCachePath = gcEntryLogMetadataCachePath;
+            this.input = input;
+            this.expException = expException;
+        }
+
+        @Parameterized.Parameters
+        public static Collection<Object[]> testCasesArgument() {
+            return Arrays.asList(new Object[][]{
+
+                    {DIR_WITH_FILE, DIR_WITH_FILE, DIR_WITH_FILE, DIR_WITH_FILE, true, false, "Y", true, false},
+                    {DIR_WITH_FILE, DIR_WITH_SUBDIR_AND_FILE, DIR_WITH_SUBDIR_AND_FILE, DIR_WITH_SUBDIR_AND_FILE, true, false, "Y", true, false},
+                    {DIR_WITH_SUBDIR_AND_FILE, DIR_WITH_FILE, EMPTY_LIST, NON_EXISTENT_DIRS, true, false, "N", false, false},
+                    {DIR_WITH_LOCKED_FILE, DIR_WITH_LOCKED_FILE, DIR_WITH_LOCKED_FILE, DIR_WITH_LOCKED_FILE, false, true, "Y", false, false},
+                    {DIR_WITH_LOCKED_EMPTY_SUBDIR, NON_EXISTENT_DIRS, DIR_WITH_FILE, EMPTY_LIST, false, true, "Y", false, false},
+                    {EMPTY_LIST, DIR_WITH_LOCKED_EMPTY_SUBDIR, DIR_WITH_LOCKED_EMPTY_SUBDIR, DIR_WITH_LOCKED_EMPTY_SUBDIR, true, false, "Y", false, false},
+                     {DIR_WITH_LOCKED_EMPTY_SUBDIR, DIR_WITH_LOCKED_FILE, DIR_WITH_LOCKED_EMPTY_SUBDIR, DIR_WITH_LOCKED_FILE, false, true, "Y", false, false},
+                    {DIR_WITH_LOCKED_EMPTY_SUBDIR, DIR_WITH_SUBDIR_AND_FILE, DIR_WITH_FILE, EMPTY_LIST, false, true, "Y", false, false},
+                    {EMPTY_LIST, DIR_WITH_LOCKED_EMPTY_SUBDIR, DIR_WITH_LOCKED_EMPTY_SUBDIR, DIR_WITH_SUBDIR_AND_FILE, true, false, "Y", false, false},
+                    {EMPTY_LIST, EMPTY_LIST, EMPTY_LIST, EMPTY_LIST, true, true, "Y", true, false},
+                    {NULL, NULL, NULL, EMPTY_LIST, false, false, "Y", false, true},
+                    {NULL, EMPTY_LIST, NULL, EMPTY_LIST, false, false, "Y", false, true},
+                    {NULL, EMPTY_LIST, DIR_WITH_LOCKED_EMPTY_SUBDIR, EMPTY_LIST, false, false, "Y", false, true},
+
+            });
+        }
+
+        @Before
+        public void setup() throws Exception {
+            conf = mock(ServerConfiguration.class);
+
+            File[] journalDirsArray = journalDirs.fetchDirectories();
+            File[] ledgerDirsArray = ledgerDirs.fetchDirectories();
+            File[] indexDirsArray = indexDirs.fetchDirectories();
+            String gcPath = gcEntryLogMetadataCachePath.fetchGcLogMetadataPath();
+
+            when(conf.getJournalDirs()).thenReturn(journalDirsArray);
+            when(conf.getLedgerDirs()).thenReturn(ledgerDirsArray);
+            when(conf.getIndexDirs()).thenReturn(indexDirsArray);
+            when(conf.getGcEntryLogMetadataCachePath()).thenReturn(gcPath);
+        }
+
+        @After
+        public void cleanup() {
+            DeleteTemporaryDir.deleteFiles(conf.getJournalDirs(), conf.getIndexDirs(), conf.getLedgerDirs());
+            System.setIn(originalSystemIn);
+        }
+
+        @Test
+        public void formatTest() {
+            try {
+                originalSystemIn = System.in;
+
+                switch (this.input) {
+                    case "Y":
+                        System.setIn(new ByteArrayInputStream("Y\nY\nY\n".getBytes()));
+                        break;
+                    case "N":
+                        System.setIn(new ByteArrayInputStream("N\n".getBytes()));
+                        break;
+                    default:
+                        throw new IllegalArgumentException("Invalid input case: " + this.input);
+                }
+
+
+                Assert.assertEquals(expectedResult, BookieImpl.format(conf, isInteractive, force));
+
+                File[] journalDirs = conf.getJournalDirs();
+                if (journalDirs != null && expectedResult) {
+                    for (File dir : journalDirs) {
+                        assertNotNull("Journal directory should not be null", dir);
+                        assertTrue("Journal directory should exist after formatting", dir.exists());
+                        assertTrue("Journal directory should be writable after formatting", dir.canWrite());
+                        assertTrue("Journal directory should be empty after formatting", dir.list().length == 0);
+                    }
+                }
+
+                File[] ledgerDirs = conf.getLedgerDirs();
+                if (ledgerDirs != null && expectedResult) {
+                    for (File dir : ledgerDirs) {
+                        assertNotNull("Ledger directory should not be null", dir);
+                        assertTrue("Ledger directory should exist after formatting", dir.exists());
+                        assertTrue("Ledger directory should be writable after formatting", dir.canWrite());
+                        assertTrue("Ledger directory should be empty after formatting", dir.list().length == 0);
+                    }
+                }
+
+                File[] indexDirs = conf.getIndexDirs();
+                if (indexDirs != null && expectedResult) {
+                    for (File dir : indexDirs) {
+                        assertNotNull("Index directory should not be null", dir);
+                        assertTrue("Index directory should exist after formatting", dir.exists());
+                        assertTrue("Index directory should be writable after formatting", dir.canWrite());
+                        assertTrue("Index directory should be empty after formatting", dir.list().length == 0);
+                    }
+                }
+
+                assertFalse("Exception was not expected", this.expException);
+
+            } catch (NullPointerException e) {
+                if (!expException) {
+                    fail("Unexpected exception thrown: " + e.getMessage());
+                }
+                assertTrue("Exception 1", this.expException);
+            } catch (Exception e) {
+                if (!expException) {
+                    fail("Unexpected exception thrown: " + e.getMessage());
+                }
+                assertTrue("Exception 2", this.expException);
+            }
+        }
+
+    }
 
 }
