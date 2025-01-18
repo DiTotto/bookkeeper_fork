@@ -19,15 +19,15 @@ public class EntryBuilder {
 
         ByteBuf entry = Unpooled.buffer(metadataSize + dataSize + authCodeSize);
 
-        // 1. metadati
+        // 1. metadata
         entry.writeLong(ledgerId);
         entry.writeLong(entryId);
         entry.writeLong(lastConfirmed);
 
-        // 2. dati
+        // 2. data
         entry.writeBytes(data);
 
-        // 3. codice di auth
+        // 3. auth code
         entry.writeBytes(authCode);
 
         return entry;
@@ -46,21 +46,21 @@ public class EntryBuilder {
 
         ByteBuf entry = Unpooled.buffer(metadataSize + dataSize + authCodeSize);
 
-        // 1. metadati
+        // 1. metadata
         entry.writeLong(ledgerId);
         entry.writeLong(entryId);
         entry.writeLong(lastConfirmed);
 
-        // 2. dati
+        // 2. data
         entry.writeBytes(data);
 
-        // 3. codice di auth
+        // 3. auth code
         entry.writeBytes(authCode);
 
         return entry;
     }
 
-    // builder per istanza non valida --> metadati non validi
+    // invalid entry builder --> invalid metadata
     public static ByteBuf createInvalidEntry() {
         long ledgerId = -1L;
         long entryId = -1L;
@@ -85,7 +85,7 @@ public class EntryBuilder {
         return entry;
     }
 
-    // builder per istanza non valida --> metadati assenti
+    // invalid entry builder --> metadata absent
     public static ByteBuf createInvalidEntryWithoutMetadata() {
         byte[] data = "DataWithoutMetadata".getBytes();
 
@@ -98,83 +98,7 @@ public class EntryBuilder {
     }
 
 
-    public static long extractLedgerId(ByteBuf entry) {
-        // Salva l'indice di lettura corrente
-        int readerIndex = entry.readerIndex();
-        try {
-            // Sposta il lettore alla posizione iniziale per leggere ledgerId
-            entry.readerIndex(0);
-            return entry.readLong();
-        } finally {
-            // Ripristina l'indice di lettura originale
-            entry.readerIndex(readerIndex);
-        }
-    }
 
-    public static long extractEntryId(ByteBuf entry) {
-        // Salva l'indice di lettura corrente
-        int readerIndex = entry.readerIndex();
-        try {
-            // Sposta il lettore alla posizione del secondo long per leggere entryId
-            entry.readerIndex(Long.BYTES); // LedgerId è il primo Long, quindi saltiamo quello
-            return entry.readLong();
-        } finally {
-            // Ripristina l'indice di lettura originale
-            entry.readerIndex(readerIndex);
-        }
-    }
-
-    public static boolean isInvalidEntry(ByteBuf entry) {
-
-        if (entry.readableBytes() < Long.BYTES * 3) {
-            return false;
-        }
-
-        int readerIndex = entry.readerIndex();
-        try {
-            entry.readerIndex(0);
-            long ledgerId = entry.readLong();
-            long entryId = entry.readLong();
-            long lastConfirmed = entry.readLong();
-
-            return ledgerId < 0 || entryId < 0 || lastConfirmed < 0;
-        } finally {
-            entry.readerIndex(readerIndex);
-        }
-    }
-
-    public static boolean isInvalidEntryWithoutMetadata(ByteBuf entry) {
-        return entry.readableBytes() > 0 && entry.readableBytes() < Long.BYTES * 3;
-    }
-
-    public static boolean isValidEntry(ByteBuf entry) {
-        int readableBytes = entry.readableBytes();
-        int metadataSize = Long.BYTES * 3;
-        byte[] validAuth = "ValidAuth".getBytes();
-        byte[] validData = "ValidData".getBytes();
-
-        if (readableBytes >= metadataSize + validAuth.length + validData.length) {
-            int readerIndex = entry.readerIndex();
-            try {
-                entry.readerIndex(metadataSize);
-
-
-                byte[] data = new byte[validData.length];
-                entry.readBytes(data);
-                if (!new String(data).equals(new String(validData))) {
-                    return false;
-                }
-
-
-                byte[] auth = new byte[validAuth.length];
-                entry.readBytes(auth);
-                return new String(auth).equals(new String(validAuth));
-            } finally {
-                entry.readerIndex(readerIndex);
-            }
-        }
-        return false;
-    }
 
 
 }
