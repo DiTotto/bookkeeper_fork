@@ -1,0 +1,39 @@
+name: Run Specific Test
+
+on:
+  push:
+    branches:
+      - main  # O la branch su cui vuoi triggerare i test
+
+jobs:
+  test-specific-file:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout del codice sorgente
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Step 2: Configurazione di Java
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'  # Puoi cambiare la distribuzione se necessario
+          java-version: '17'       # Cambia con la versione di Java che usi nel progetto
+
+      # Step 3: Cache delle dipendenze Maven (facoltativo, per ottimizzare il tempo di build)
+      - name: Cache Maven dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven
+
+      # Step 4: Compilazione del progetto
+      - name: Build project
+        run: mvn clean compile -B
+
+      # Step 5: Eseguire i test sul file specifico
+      - name: Run specific test
+        run: mvn -Dtest=bookkeeper-server/src/test/java/org/apache/bookkeeper/bookie/BookieImplTest.java test
