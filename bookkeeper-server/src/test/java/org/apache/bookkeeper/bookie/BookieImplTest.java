@@ -1,16 +1,21 @@
 package org.apache.bookkeeper.bookie;
 
+import io.netty.buffer.ByteBuf;
 import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.bookkeeper.conf.TestBKConfiguration;
 import org.apache.bookkeeper.helper.DeleteTemporaryDir;
 import org.apache.bookkeeper.helper.DirectoryTestHelper;
+import org.apache.bookkeeper.helper.EntryBuilder;
 import org.apache.bookkeeper.helper.TmpDirs;
 import org.apache.bookkeeper.net.BookieId;
 import org.apache.bookkeeper.net.BookieSocketAddress;
+import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks;
 import org.junit.*;
 import org.junit.experimental.runners.Enclosed;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -24,6 +29,7 @@ import static org.mockito.Mockito.*;
 
 import java.io.File;
 import java.net.UnknownHostException;
+import java.util.PrimitiveIterator;
 
 @RunWith(value = Enclosed.class)
 public class BookieImplTest {
@@ -410,7 +416,7 @@ public class BookieImplTest {
                     {DIR_WITH_LOCKED_FILE, DIR_WITH_LOCKED_FILE, DIR_WITH_LOCKED_FILE, DIR_WITH_LOCKED_FILE, false, true, "Y", false, false},
                     {DIR_WITH_LOCKED_EMPTY_SUBDIR, NON_EXISTENT_DIRS, DIR_WITH_FILE, EMPTY_LIST, false, true, "Y", false, false},
                     {EMPTY_LIST, DIR_WITH_LOCKED_EMPTY_SUBDIR, DIR_WITH_LOCKED_EMPTY_SUBDIR, DIR_WITH_LOCKED_EMPTY_SUBDIR, true, false, "Y", false, false},
-                     {DIR_WITH_LOCKED_EMPTY_SUBDIR, DIR_WITH_LOCKED_FILE, DIR_WITH_LOCKED_EMPTY_SUBDIR, DIR_WITH_LOCKED_FILE, false, true, "Y", false, false},
+                    {DIR_WITH_LOCKED_EMPTY_SUBDIR, DIR_WITH_LOCKED_FILE, DIR_WITH_LOCKED_EMPTY_SUBDIR, DIR_WITH_LOCKED_FILE, false, true, "Y", false, false},
                     {DIR_WITH_LOCKED_EMPTY_SUBDIR, DIR_WITH_SUBDIR_AND_FILE, DIR_WITH_FILE, EMPTY_LIST, false, true, "Y", false, false},
                     {EMPTY_LIST, DIR_WITH_LOCKED_EMPTY_SUBDIR, DIR_WITH_LOCKED_EMPTY_SUBDIR, DIR_WITH_SUBDIR_AND_FILE, true, false, "Y", false, false},
                     {EMPTY_LIST, EMPTY_LIST, EMPTY_LIST, EMPTY_LIST, true, true, "Y", true, false},
@@ -503,6 +509,186 @@ public class BookieImplTest {
                     fail("Unexpected exception thrown: " + e.getMessage());
                 }
                 assertTrue("Exception 2", this.expException);
+            }
+        }
+
+    }
+
+
+    /*@RunWith(Parameterized.class)
+    public static class GetListOfEntriesOfLedgerTest{
+
+            private final long ledgerId;
+            //private final long startEntryId;
+            //private final long endEntryId;
+            private final boolean expectException;
+            private BookieImpl bookie;
+
+            /*public GetListOfEntriesOfLedgerTest(long ledgerId, long startEntryId, long endEntryId, boolean expectException) {
+                this.ledgerId = ledgerId;
+                this.startEntryId = startEntryId;
+                this.endEntryId = endEntryId;
+                this.expectException = expectException;
+            }*/
+            /*public GetListOfEntriesOfLedgerTest(long ledgerId, boolean expectException) {
+                this.ledgerId = ledgerId;
+                this.expectException = expectException;
+            }
+
+            @Before
+            public void setup() throws Exception {
+
+
+
+                ServerConfiguration conf = TestBKConfiguration.newServerConfiguration();
+
+                bookie = new TestBookieImpl(conf);
+
+
+            }
+
+            @Parameterized.Parameters
+            public static Collection<Object[]> data() {
+                return Arrays.asList(new Object[][]{
+                        // valid
+                        /*{1, 1, 10, false},   // ledgerId, startEntryId, endEntryId validi
+                        {1, 1, 1, false},    // ledgerId, startEntryId, endEntryId validi
+                        {1, 10, 1, false},   // ledgerId, startEntryId, endEntryId validi
+                        // invalid
+                        {0, 1, 10, true},    // ledgerId non valido
+                        {1, 0, 10, true},    // startEntryId non valido
+                        {1, 1, 0, true},     // endEntryId non valido
+                        {0, 0, 0, true},     // ledgerId, startEntryId, endEntryId non validi
+                *//*
+                        {1,false}
+                });
+            }
+
+            @Test
+            public void testGetListOfEntriesOfLedger() {
+                try {
+                    //bookie.getListOfEntriesOfLedger(ledgerId, startEntryId, endEntryId);
+                    bookie.getListOfEntriesOfLedger(ledgerId);
+                    if (expectException) {
+                        fail("Expected exception but none was thrown.");
+                    }
+                } catch (Exception e) {
+                    if (!expectException) {
+                        fail("Unexpected exception: " + e.getMessage());
+                    }
+                }
+            }
+
+    }
+*/
+    @RunWith(Parameterized.class)
+    public static class GetListOfEntriesOfLedgerTest{
+
+        private final long ledgerId;
+        //private final long startEntryId;
+        //private final long endEntryId;
+        private final boolean expectException;
+        private final ByteBuf entry;
+        private final boolean ackBeforeSync;
+        private final BookkeeperInternalCallbacks.WriteCallback cb;
+        private final Object ctx;
+        private final byte[] masterKey;
+
+        //private final Long testLedgerId;
+        //private final boolean useWatcher;
+        private final Class<? extends Exception> exceptionClass;
+        private BookieImpl bookie;
+
+            /*public GetListOfEntriesOfLedgerTest(long ledgerId, long startEntryId, long endEntryId, boolean expectException) {
+                this.ledgerId = ledgerId;
+                this.startEntryId = startEntryId;
+                this.endEntryId = endEntryId;
+                this.expectException = expectException;
+            }*/
+            /*public GetListOfEntriesOfLedgerTest(long ledgerId, boolean expectException) {
+                this.ledgerId = ledgerId;
+                this.expectException = expectException;
+            }*/
+            public GetListOfEntriesOfLedgerTest(long ledgerId1, ByteBuf entry, boolean ackBeforeSync, BookkeeperInternalCallbacks.WriteCallback cb,
+                                                Object ctx, byte[] masterKey, Long testLedgerId,
+                                                boolean useWatcher, boolean expectException, Class<? extends Exception> exceptionClass) {
+                this.ledgerId = ledgerId1;
+                this.entry = entry;
+                this.ackBeforeSync = ackBeforeSync;
+                this.cb = cb;
+                this.ctx = ctx;
+                this.masterKey = masterKey;
+                this.expectException = expectException;
+                this.exceptionClass = exceptionClass;
+            }
+
+            @Before
+            public void setup() throws Exception {
+
+
+
+                ServerConfiguration conf = TestBKConfiguration.newServerConfiguration();
+
+                bookie = new TestBookieImpl(conf);
+
+
+            }
+
+            @Parameterized.Parameters
+            public static Collection<Object[]> data() {
+                return Arrays.asList(new Object[][]{
+                        // valid
+                        /*{1, 1, 10, false},   // ledgerId, startEntryId, endEntryId validi
+                        {1, 1, 1, false},    // ledgerId, startEntryId, endEntryId validi
+                        {1, 10, 1, false},   // ledgerId, startEntryId, endEntryId validi
+                        // invalid
+                        {0, 1, 10, true},    // ledgerId non valido
+                        {1, 0, 10, true},    // startEntryId non valido
+                        {1, 1, 0, true},     // endEntryId non valido
+                        {0, 0, 0, true},     // ledgerId, startEntryId, endEntryId non validi
+                */
+                        //{1,false}
+                        // valid case
+                        {1, EntryBuilder.createValidEntryWithLedgerId(1), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, true, false, null},
+                        // invalid case
+                        {2, EntryBuilder.createValidEntryWithLedgerId(1), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, true, true, Bookie.NoLedgerException.class},
+                        {2, EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, true, true, Bookie.NoLedgerException.class},
+
+                });
+            }
+            private static BookkeeperInternalCallbacks.WriteCallback mockWriteCallback() {
+                return mock(BookkeeperInternalCallbacks.WriteCallback.class);
+            }
+
+            @Test
+            public void testGetListOfEntriesOfLedger() {
+                try {
+                    bookie.addEntry(entry, ackBeforeSync, cb, ctx, masterKey);
+                    //bookie.getListOfEntriesOfLedger(ledgerId, startEntryId, endEntryId);
+                    PrimitiveIterator.OfLong entriesOfLedger = bookie.getListOfEntriesOfLedger(ledgerId);
+
+                    if (expectException && exceptionClass != null) {
+                        fail("Expected exception but none was thrown.");
+                    }
+                } catch (Exception e) {
+                    if(exceptionClass != null) {
+                        if ( exceptionClass != e.getClass()) {
+                            fail("Expected exception of class: " + exceptionClass + "but obtained of class " + e.getClass());
+                        }
+                    }
+                    if (!expectException) {
+                        fail("Unexpected exception: " + e.getMessage() + " " + e.getClass());
+                    }
+
+                }
+            }
+
+        @After
+        public void teardown() {
+            try {
+                bookie.shutdown();
+            } catch (Exception e) {
+                fail("Unexpected exception thrown: " + e.getClass().getSimpleName());
             }
         }
 
