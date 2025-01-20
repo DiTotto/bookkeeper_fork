@@ -20,8 +20,7 @@ on:
   push:
   pull_request:
     branches:
-      - master
-      - branch-*   
+      - noone
     paths:
       - '**.md'
 
