@@ -1,4 +1,4 @@
-name: Run Specific Test
+name: BookieImpl test
 
 on:
   push:
