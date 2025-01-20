@@ -32,7 +32,7 @@ jobs:
 
       # Step 4: Compilazione del progetto
       - name: Build project
-        run: mvn clean compile -B
+        run: mvn clean compile
 
       # Step 5: Eseguire i test sul file specifico
       - name: Run specific test
