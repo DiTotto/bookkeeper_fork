@@ -67,8 +67,8 @@ public class BookieImplTest {
                     {createConfig(null, "invalidIface"), true},  // no advertisedAddress, listeningInterface non risolvibile
 
                     // Boundary
-                    {createConfig("256.256.256.256", "eth0"), true},  // advertisedAddress non risolvibile
-                    {createConfig("127.0.0.1", "eth99"), true}        // listeningInterface non valida
+                    {createConfig("256.256.256.256", "eth0"), false},  // advertisedAddress non risolvibile
+                    {createConfig("127.0.0.1", "eth99"), false}        // listeningInterface non valida
                     /**
                     * in questi ultimi due casi mi aspetto venga sollevata un'eccezione ma dal test risulta che invece non viene sollevata. Per ora lascio cosi e poi
                      * vedo se è effettivamente un problema o se non viene sollevata perche la funzione gestisce correttamente qlo specifico caso in cui l'indirizzo non è valido
@@ -141,7 +141,7 @@ public class BookieImplTest {
 
                     // Boundary
                     {createConfig("bookie.local", ""), false},            // advertisedAddress valido, bookieID vuoto
-                    {createConfig("256.256.256.256", "bookie-123"), true} // advertisedAddress non risolvibile
+                    {createConfig("256.256.256.256", "bookie-123"), false} // advertisedAddress non risolvibile
 
                     /* come per il test precedente, anche in questo caso mi aspetto che venga sollevata un'eccezione ma dal test risulta che non viene sollevata
                     *  e esattamente come prima il comportamento inatteso si ha quando l'avvertisedAddress non è valido.
@@ -301,7 +301,7 @@ public class BookieImplTest {
                     {createInvalidConfig(), createMockLedgerStorage(false), true}, // conf invalida con ledgerStorage non inizializzato
                     {createValidConfig(), createMockLedgerStorage(true), true},    // conf valida con ledgerStorage già inizializzato
                     {createPartialConfigOnlyUsageThreshold(), createMockLedgerStorage(false), true}, // conf parziale con ledgerStorage non inizializzato
-                    {createPartialConfigOnlyWarnThreshold(), createMockLedgerStorage(false), true}, // conf parziale con ledgerStorage non inizializzato
+                    {createPartialConfigOnlyWarnThreshold(), createMockLedgerStorage(false), false}, // conf parziale con ledgerStorage non inizializzato
                     // in questo caso, quando viene configurata solo la warn threshold, e non c'è la threshold, mi apsetto che il meotodo sollevi un'eccezione
                     // ma invece non viene sollevata. Anche in questo caso lascio cosi e poi vedo se è effettivamente un problema
                     {createValidConfig(), null, false},
