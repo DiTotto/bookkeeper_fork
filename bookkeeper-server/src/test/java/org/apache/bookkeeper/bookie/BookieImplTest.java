@@ -622,6 +622,7 @@ public class BookieImplTest {
                 this.exceptionClass = exceptionClass;
             }
 
+
             @Before
             public void setup() throws Exception {
 
