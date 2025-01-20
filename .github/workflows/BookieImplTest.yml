@@ -19,7 +19,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'  # Puoi cambiare la distribuzione se necessario
-          java-version: '8'       # Cambia con la versione di Java che usi nel progetto
+          java-version: '18'       # Cambia con la versione di Java che usi nel progetto
 
       # Step 3: Cache delle dipendenze Maven (facoltativo, per ottimizzare il tempo di build)
       - name: Cache Maven dependencies
