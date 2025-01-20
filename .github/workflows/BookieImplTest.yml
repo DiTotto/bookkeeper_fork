@@ -36,4 +36,4 @@ jobs:
 
       # Step 5: Eseguire i test sul file specifico
       - name: Run specific test
-        run: mvn -Dtest=bookkeeper-server/src/test/java/org/apache/bookkeeper/bookie/BookieImplTest.java test
+        run: mvn test -Dtest=BookieImplTest#testGetListOfEntriesOfLedger
