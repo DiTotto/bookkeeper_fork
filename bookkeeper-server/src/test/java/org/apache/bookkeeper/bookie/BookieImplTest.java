@@ -756,11 +756,13 @@ public class BookieImplTest {
                     {EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), null, null,null, true, Bookie.NoLedgerException.class},
                     // entry non valida perchè la chiave è una null,
                     {EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), "Valida".getBytes(), -1L, null, true, null},
-                    // entry non valida perche il ledgerId passato è -1L
-                    {EntryBuilder.createValidEntryWithLedgerId(1), true, mockWriteCallback(), new Object(), "Valida".getBytes(), 2L, null, true, null},
+                    // entry non valida perche il ledgerId passato è -1L e quindi non trova il ledger
+                    {EntryBuilder.createValidEntryWithLedgerId(1), true, mockWriteCallback(), new Object(), "Valida".getBytes(), 2L, null, true, Bookie.NoLedgerException.class},
                     // entry non valida perchè il ledgerId passato è diverso da quello inserito al momento della creazione
-                    {EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), "Valida".getBytes(), null, 1L, true, null},
-                    // entry non valida perchè l'entryId è un entryId randomico non presente nel ledger
+                    {EntryBuilder.createValidEntry(), false, mockWriteCallback(), new Object(), null, 1L, 1L, true, null},
+                    // entry non valida perchè la key è null
+                    {EntryBuilder.createValidEntryWithLedgerId(1L), true, mockWriteCallback(), new Object(), "Valida".getBytes(), 1L, null, false, null},
+                    // entry valida perche creo una entry con un certo ledgerId e gli passo lo stesso
             });
         }
         private static BookkeeperInternalCallbacks.WriteCallback mockWriteCallback() {
@@ -774,14 +776,16 @@ public class BookieImplTest {
             try {
                 bookie.addEntry(entry, ackBeforeSync, cb, ctx, masterKey);
 
-                if (expectException && exceptionClass != null) {
+                /*if (expectException && exceptionClass == null) {
                     fail("Expected exception but none was thrown.");
-                }
+                }*/
 
-                if(!expectException) {
+                //if(!expectException || exceptionClass == null) {
                     if(expectedLedgerId == null) {
                         wasNull = true;
                         this.expectedLedgerId = EntryBuilder.getLedgerId(entry);
+                    }else {
+                        this.expectedLedgerId = expectedLedgerId;
                     }
                     if (expectedEntryId == null) {
                         this.expectedEntryId = EntryBuilder.getEntryId(entry);
@@ -797,7 +801,11 @@ public class BookieImplTest {
                     }else{
                         try {
                             bookie.readLastAddConfirmed(expectedLedgerId);
-                            fail("Expected exception but none was thrown.");
+                            if(this.expectedLedgerId == EntryBuilder.getLedgerId(entry)){
+                                assertTrue("Entry correctly read",true);
+                            }else {
+                                fail("Expected exception but none was thrown.");
+                            }
                         } catch (Bookie.NoLedgerException e) {
                             // expected
                             assertTrue("Exception correctly thrown",true);
@@ -808,7 +816,7 @@ public class BookieImplTest {
 
                     }
 
-                }
+                //}
             } catch (Exception e) {
                 if(exceptionClass != null) {
                     if ( exceptionClass != e.getClass()) {
@@ -821,6 +829,45 @@ public class BookieImplTest {
 
             }
         }
+
+
+        @Test
+        public void RecoveryAddEntryTest() {
+            boolean wasNull = false;
+
+            try {
+                bookie.recoveryAddEntry(entry, cb, ctx, masterKey);
+
+                assertTrue("Recovery add entry completed without exceptions", true);
+                if(this.expectedLedgerId == null) {
+                    wasNull = true;
+                    this.expectedLedgerId = EntryBuilder.getLedgerId(entry);
+                }
+                if (expectedEntryId == null) {
+                    this.expectedEntryId = EntryBuilder.getEntryId(entry);
+                }
+                //long ledgerId = EntryBuilder.getLedgerId(entry);
+                //long entryId = EntryBuilder.getEntryId(entry);
+                ByteBuf result = bookie.readEntry(this.expectedLedgerId, this.expectedEntryId);
+
+                assertNotNull("Recovered entry should be readable.", result);
+                assertEquals("Entry content should match.", entry, result);
+                if(expectException)
+                    fail("Expected exception but none was thrown.");
+
+            } catch (Exception e) {
+                if(exceptionClass != null) {
+                    if ( exceptionClass != e.getClass()) {
+                        fail("Expected exception of class: " + exceptionClass + "but obtained of class " + e.getClass());
+                    }
+                }
+                if (!expectException) {
+                    fail("Unexpected exception: " + e.getMessage() + " " + e.getClass());
+                }
+
+            }
+        }
+
 
         @After
         public void teardown() {
