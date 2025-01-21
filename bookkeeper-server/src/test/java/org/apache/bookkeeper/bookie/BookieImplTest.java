@@ -20,6 +20,7 @@ import org.mockito.Mock;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collection;
 
@@ -30,6 +31,8 @@ import static org.mockito.Mockito.*;
 import java.io.File;
 import java.net.UnknownHostException;
 import java.util.PrimitiveIterator;
+
+import io.netty.buffer.Unpooled;
 
 @RunWith(value = Enclosed.class)
 public class BookieImplTest {
@@ -693,6 +696,259 @@ public class BookieImplTest {
             }
         }
 
+    }
+
+
+    @RunWith(Parameterized.class)
+    public static class ReadEntryTest{
+
+        private final boolean expectException;
+        private final ByteBuf entry;
+        private final boolean ackBeforeSync;
+        private final BookkeeperInternalCallbacks.WriteCallback cb;
+        private final Object ctx;
+        private final byte[] masterKey;
+        private  Long expectedLedgerId;
+        private Long expectedEntryId;
+
+
+        private final Class<? extends Exception> exceptionClass;
+        private BookieImpl bookie;
+
+        public ReadEntryTest(ByteBuf entry, boolean ackBeforeSync, BookkeeperInternalCallbacks.WriteCallback cb,
+                                            Object ctx, byte[] masterKey, Long testLedgerId, Long expectedEntryId,
+                                            boolean expectException, Class<? extends Exception> exceptionClass) {
+            this.entry = entry;
+            this.ackBeforeSync = ackBeforeSync;
+            this.cb = cb;
+            this.ctx = ctx;
+            this.masterKey = masterKey;
+            this.expectException = expectException;
+            this.exceptionClass = exceptionClass;
+            this.expectedLedgerId = testLedgerId;
+            this.expectedEntryId = expectedEntryId;
+
+        }
+
+
+        @Before
+        public void setup() throws Exception {
+
+            ServerConfiguration conf = TestBKConfiguration.newServerConfiguration();
+            bookie = new TestBookieImpl(conf);
+
+        }
+
+        @Parameterized.Parameters
+        public static Collection<Object[]> data() {
+            return Arrays.asList(new Object[][]{
+
+                    // valid case
+                    {EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), "Valida".getBytes(), null, null,false, null},
+                    //entry valida, con ackBeforeSync = true, la callback gestita dal mock, il contesto è un oggetto generico, la chiave master è una stringa valida, il ledgerId è null
+                    // il ledgerid è null e useWatcher è true
+                    // invalid case
+                    {null, true, null, null, "Valida".getBytes(), -1L, null, true, null},
+                    // invalid perchè entry null,
+                    // con ackBeforeSync = true, la callback è null, il contesto è null, la chiave master è una stringa valida, il ledgerId è -1
+                    {EntryBuilder.createInvalidEntryWithoutMetadata(), false, mockWriteCallback(), new Object(), "".getBytes(StandardCharsets.UTF_8), null, null, true, IndexOutOfBoundsException.class},
+                    // entry non valida, senza metadata, con ackBeforeSync = false, la callback gestita dal mock, il contesto è un oggetto generico, la chiave master è una stringa vuota, il ledgerId è null
+                    {EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), null, null,null, true, Bookie.NoLedgerException.class},
+                    // entry non valida perchè la chiave è una null,
+                    {EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), "Valida".getBytes(), -1L, null, true, null},
+                    // entry non valida perche il ledgerId passato è -1L
+                    {EntryBuilder.createValidEntryWithLedgerId(1), true, mockWriteCallback(), new Object(), "Valida".getBytes(), 2L, null, true, null},
+                    // entry non valida perchè il ledgerId passato è diverso da quello inserito al momento della creazione
+                    {EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), "Valida".getBytes(), null, 1L, true, null},
+                    // entry non valida perchè l'entryId è un entryId randomico non presente nel ledger
+            });
+        }
+        private static BookkeeperInternalCallbacks.WriteCallback mockWriteCallback() {
+            return mock(BookkeeperInternalCallbacks.WriteCallback.class);
+        }
+
+        @Test
+        public void testReadAndAddEntry() {
+            boolean wasNull = false;
+
+            try {
+                bookie.addEntry(entry, ackBeforeSync, cb, ctx, masterKey);
+
+                if (expectException && exceptionClass != null) {
+                    fail("Expected exception but none was thrown.");
+                }
+
+                if(!expectException) {
+                    if(expectedLedgerId == null) {
+                        wasNull = true;
+                        this.expectedLedgerId = EntryBuilder.getLedgerId(entry);
+                    }
+                    if (expectedEntryId == null) {
+                        this.expectedEntryId = EntryBuilder.getEntryId(entry);
+                    }
+                    ByteBuf readEntry = bookie.readEntry(expectedLedgerId, expectedEntryId);
+                    assertNotNull("Entry should not be null", readEntry);
+                    assertEquals("Entry should be equal to the one added", entry, readEntry);
+
+                    if (wasNull){
+                        long lastEntryId = bookie.readLastAddConfirmed(expectedLedgerId);
+                        assertEquals("EntryId should be equal to lastEntryId", (long) this.expectedEntryId, lastEntryId);
+
+                    }else{
+                        try {
+                            bookie.readLastAddConfirmed(expectedLedgerId);
+                            fail("Expected exception but none was thrown.");
+                        } catch (Bookie.NoLedgerException e) {
+                            // expected
+                            assertTrue("Exception correctly thrown",true);
+                        }
+                        catch (IOException e) {
+                            assertTrue("Exception correctly thrown",true);
+                        }
+
+                    }
+
+                }
+            } catch (Exception e) {
+                if(exceptionClass != null) {
+                    if ( exceptionClass != e.getClass()) {
+                        fail("Expected exception of class: " + exceptionClass + "but obtained of class " + e.getClass());
+                    }
+                }
+                if (!expectException) {
+                    fail("Unexpected exception: " + e.getMessage() + " " + e.getClass());
+                }
+
+            }
+        }
+
+        @After
+        public void teardown() {
+            try {
+                bookie.shutdown();
+            } catch (Exception e) {
+                fail("Unexpected exception thrown: " + e.getClass().getSimpleName());
+            }
+        }
+
+    }
+
+    @RunWith(Parameterized.class)
+    public static class SetExplicitLacTest {
+
+        private final boolean expectException;
+        private final ByteBuf entry;
+        private final BookkeeperInternalCallbacks.WriteCallback cb;
+        private final Object ctx;
+        private final byte[] masterKey;
+        private Long expectedLedgerId;
+
+
+
+        private final Class<? extends Exception> exceptionClass;
+        private BookieImpl bookie;
+
+        public SetExplicitLacTest(ByteBuf entry, BookkeeperInternalCallbacks.WriteCallback cb,
+                             Object ctx, byte[] masterKey, Long ledgerId,
+                             boolean expectException, Class<? extends Exception> exceptionClass) {
+            this.entry = entry;
+            this.cb = cb;
+            this.ctx = ctx;
+            this.masterKey = masterKey;
+            this.expectException = expectException;
+            this.exceptionClass = exceptionClass;
+            this.expectedLedgerId = ledgerId;
+        }
+
+
+        @Before
+        public void setup() throws Exception {
+
+            ServerConfiguration conf = TestBKConfiguration.newServerConfiguration();
+            bookie = new TestBookieImpl(conf);
+
+        }
+
+        @Parameterized.Parameters
+        public static Collection<Object[]> data() {
+            return Arrays.asList(new Object[][]{
+
+                    // valid case
+                    {EntryBuilder.createValidEntry(), mockWriteCallback(), new Object(), "Valida".getBytes(), 1L,false, null},
+                    //entry valida, con ackBeforeSync = true, la callback gestita dal mock, il contesto è un oggetto generico, la chiave master è una stringa valida, il ledgerId è null
+                    // il ledgerid è null
+                    {EntryBuilder.createValidEntry(), mockWriteCallback(), new Object(), "Valida".getBytes(), null, false, null},
+                    // invalid case
+                    {null, null, null, "Valida".getBytes(), -1L, true, null},
+                    // invalid perchè entry null,
+                    // con ackBeforeSync = true, la callback è null, il contesto è null, la chiave master è una stringa valida, il ledgerId è -1
+                    {EntryBuilder.createValidEntryWithLedgerId(1L), mockWriteCallback(), new Object(), null, null, true, Bookie.NoLedgerException.class},
+                    // entry non valida, senza metadata, con ackBeforeSync = false, la callback gestita dal mock, il contesto è un oggetto generico, la chiave master è una stringa vuota, il ledgerId è null
+                    //{EntryBuilder.createValidEntry(), mockWriteCallback(), new Object(), null, null, true, Bookie.NoLedgerException.class},
+                    // entry non valida perchè la chiave è una null,
+                    {EntryBuilder.createValidEntry(), mockWriteCallback(), new Object(), "Valida".getBytes(), -1L, true, null},
+                    // entry non valida perche il ledgerId passato è -1L
+                    {EntryBuilder.createValidEntryWithLedgerId(1L), mockWriteCallback(), new Object(), "Valida".getBytes(), 2L, false, null},
+                    // entry valida perchè anche se il ledgerID è diverso da quello passato al momento della creazione,
+                    // nel momento in cui viene settato l'explicitLac, il ledgerId viene preso da quello passato
+
+            });
+        }
+        private static BookkeeperInternalCallbacks.WriteCallback mockWriteCallback() {
+            return mock(BookkeeperInternalCallbacks.WriteCallback.class);
+        }
+
+        @Test
+        public void testSetAndGetExplicitLAC() {
+            try {
+                if (this.expectedLedgerId == null){
+                    this.expectedLedgerId = EntryBuilder.getLedgerId(entry);
+                } else if (this.expectedLedgerId < 0){
+                    assertTrue("Negative ledgerId",this.expectException);
+                    return;
+                }
+
+                System.out.println("LedgerId: " + EntryBuilder.getLedgerId(entry));
+
+                ByteBuf lacEntry = bookie.createExplicitLACEntry(expectedLedgerId, entry);
+                assertNotNull("Entry should not be null", lacEntry);
+
+                bookie.setExplicitLac(Unpooled.copiedBuffer(lacEntry), cb, ctx, masterKey);
+                System.out.println(lacEntry.readableBytes()+ "  "+ lacEntry.isReadable());
+                assertTrue("ExplicitLac should be set", lacEntry.isReadable());
+                ByteBuf retrievedLac = bookie.getExplicitLac(expectedLedgerId);
+
+                byte[] retrievedBytes = new byte[retrievedLac.readableBytes()];
+                retrievedLac.getBytes(retrievedLac.readerIndex(), retrievedBytes);
+
+                byte[] lacEntryBytes = new byte[lacEntry.readableBytes()];
+                lacEntry.getBytes(lacEntry.readerIndex(), lacEntryBytes);
+
+                assertEquals(new String(retrievedBytes), new String(lacEntryBytes));
+                //assertEquals(new String(retrievedLac.array()),new String(lacEntry.array()));
+                assertFalse("Expected exception but none was thrown ",this.expectException);
+
+            }catch (Exception e){
+                if (!expectException) {
+                    fail("Unexpected exception: " + e.getMessage() + " " + e.getClass());
+                }
+                if(exceptionClass != null) {
+                    if ( exceptionClass != e.getClass()) {
+                        fail("Expected exception of class: " + exceptionClass + "but obtained of class " + e.getClass());
+                    }
+                }
+            }
+
+        }
+
+        @After
+        public void teardown() {
+            try {
+                bookie.shutdown();
+            } catch (Exception e) {
+                fail("Unexpected exception thrown: " + e.getClass().getSimpleName());
+            }
+        }
     }
 
 }

@@ -98,7 +98,26 @@ public class EntryBuilder {
     }
 
 
+    public static long getLedgerId(ByteBuf entry) {
+        int pointer = entry.readerIndex();
+        try{
+            entry.readerIndex(0);
+            return entry.readLong();
+        }
+        finally {
+            entry.readerIndex(pointer);
+        }
+    }
 
 
-
+    public static long getEntryId(ByteBuf entry) {
+        int pointer = entry.readerIndex();
+        try{
+            entry.readerIndex(Long.BYTES);
+            return entry.readLong();
+        }
+        finally {
+            entry.readerIndex(pointer);
+        }
+    }
 }
