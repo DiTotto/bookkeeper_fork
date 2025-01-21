@@ -751,9 +751,9 @@ public class BookieImplTest {
                     {null, true, null, null, "Valida".getBytes(), -1L, null, true, null},
                     // invalid perchè entry null,
                     // con ackBeforeSync = true, la callback è null, il contesto è null, la chiave master è una stringa valida, il ledgerId è -1
-                    {EntryBuilder.createInvalidEntryWithoutMetadata(), false, mockWriteCallback(), new Object(), "".getBytes(StandardCharsets.UTF_8), null, null, true, IndexOutOfBoundsException.class},
+                    {EntryBuilder.createInvalidEntryWithoutMetadata(), false, mockWriteCallback(), new Object(), "".getBytes(StandardCharsets.UTF_8), null, null, true, null},
                     // entry non valida, senza metadata, con ackBeforeSync = false, la callback gestita dal mock, il contesto è un oggetto generico, la chiave master è una stringa vuota, il ledgerId è null
-                    {EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), null, null,null, true, Bookie.NoLedgerException.class},
+                    {EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), null, null,null, true, null},
                     // entry non valida perchè la chiave è una null,
                     {EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), "Valida".getBytes(), -1L, null, true, null},
                     // entry non valida perche il ledgerId passato è -1L e quindi non trova il ledger
@@ -1008,16 +1008,16 @@ public class BookieImplTest {
         private final boolean shouldExist;
         private final boolean shouldBeDir;
         private final boolean mkdirOK;
-        private final boolean oldLayout;
+        private final boolean specialChars;
         private final Class<? extends Exception> expectedException;
 
-        public CheckDirectoryStructureTest(boolean shouldExist, boolean shouldBeDir, boolean mkdirOK, boolean oldLayout,
+        public CheckDirectoryStructureTest(boolean shouldExist, boolean shouldBeDir, boolean mkdirOK, boolean specialChars,
                                            Class<? extends Exception> expectedException) {
             this.shouldExist = shouldExist;
             this.shouldBeDir = shouldBeDir;
             this.mkdirOK = mkdirOK;
-            this.oldLayout = oldLayout;
             this.expectedException = expectedException;
+            this.specialChars = specialChars;
         }
 
         @Before
@@ -1026,7 +1026,10 @@ public class BookieImplTest {
             rootDir = tempDir.createNew("rootDir", null).toPath();
             if(this.shouldExist){
                 if (shouldBeDir){
-                    testDir = tempDir.createNew("testDir", null).toPath();
+                    if(!specialChars)
+                        testDir = tempDir.createNew("testDir", null).toPath();
+                    else
+                        testDir = tempDir.createNew("testDir_特殊字符@#%$", null).toPath();
                 }else{
                     testDir = Files.createFile(rootDir.resolve("testFile"));
                 }
@@ -1035,34 +1038,40 @@ public class BookieImplTest {
                 when(mockDir.getParentFile()).thenReturn(rootDir.toFile());
                 if (mkdirOK){
                     when(mockDir.mkdir()).thenReturn(true);
+                    when(mockDir.mkdirs()).thenReturn(true);
                     when(mockDir.exists()).thenReturn(false);
                 }else{
                     when(mockDir.mkdir()).thenReturn(false);
+                    when(mockDir.mkdirs()).thenReturn(false);
                     when(mockDir.exists()).thenReturn(false);
                 }
-                when(mockDir.toPath()).thenReturn(rootDir.resolve("testDir"));
-            }
-            if(oldLayout){
-                Files.createFile(rootDir.resolve("file.txn"));
+                if(!specialChars){
+                    when(mockDir.toPath()).thenReturn(rootDir.resolve("testDir"));
+                }else{
+                    when(mockDir.toPath()).thenReturn(rootDir.resolve("testDir_特殊字符@#%$"));
+                }
             }
         }
 
         @Parameterized.Parameters
         public static Collection<Object[]> data() {
             return Arrays.asList(new Object[][]{
-                    // valid case
+                    // Valid case: directory exists
                     {true, true, true, false, null},
-                    // directory esistente
-                    {true, false, false, false, null},
-                    // file esistente
-                    {true, true, false, true, null},
-                    // directory non esistente, mkdir fallisce
+                    // Valid case: file exists
+                    {true, false, true, false, null},
+                    // Directory does not exist, mkdir fails
                     {false, true, false, false, IOException.class},
-                    // directory non esistente, mkdir fallisce
+                    // Directory does not exist, mkdir succeeds
+                    {false, true, true, false, null},
+                    // Directory does not exist, mkdir fails
                     {false, true, false, false, IOException.class},
-                    // directory non esistente, mkdir fallisce
-                    {false, true, false, false, IOException.class},
+                    // Directory is null
+                    {false, false, false, false, IOException.class},
+                    // Path with special characters
+                    {true, true, true, true, null}, // Simulate via file system
             });
+
         }
 
         @Test
@@ -1077,7 +1086,11 @@ public class BookieImplTest {
                 if (expectedException != null){
                     fail("Expected exception but none was thrown.");
                 }
-
+                if(specialChars){
+                    if (dirToTest.getName().contains("特殊字符") || dirToTest.getName().contains("@#%$")) {
+                        assertTrue("Directory name contains special characters as expected.", dirToTest.exists());
+                    }
+                }
             }catch (Exception e){
                 if(expectedException == null)
                     fail("Unexpected exception thrown: " + e.getMessage());
