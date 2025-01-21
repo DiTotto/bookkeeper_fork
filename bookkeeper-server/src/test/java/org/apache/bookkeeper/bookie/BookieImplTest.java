@@ -14,13 +14,13 @@ import org.junit.*;
 import org.junit.experimental.runners.Enclosed;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collection;
 
@@ -994,6 +994,107 @@ public class BookieImplTest {
                 bookie.shutdown();
             } catch (Exception e) {
                 fail("Unexpected exception thrown: " + e.getClass().getSimpleName());
+            }
+        }
+    }
+
+    @RunWith(Parameterized.class)
+    public static class CheckDirectoryStructureTest{
+        private TmpDirs tempDir;
+        private Path rootDir;
+        private Path testDir;
+        private File mockDir;
+
+        private final boolean shouldExist;
+        private final boolean shouldBeDir;
+        private final boolean mkdirOK;
+        private final boolean oldLayout;
+        private final Class<? extends Exception> expectedException;
+
+        public CheckDirectoryStructureTest(boolean shouldExist, boolean shouldBeDir, boolean mkdirOK, boolean oldLayout,
+                                           Class<? extends Exception> expectedException) {
+            this.shouldExist = shouldExist;
+            this.shouldBeDir = shouldBeDir;
+            this.mkdirOK = mkdirOK;
+            this.oldLayout = oldLayout;
+            this.expectedException = expectedException;
+        }
+
+        @Before
+        public void setup() throws Exception {
+            tempDir = new TmpDirs();
+            rootDir = tempDir.createNew("rootDir", null).toPath();
+            if(this.shouldExist){
+                if (shouldBeDir){
+                    testDir = tempDir.createNew("testDir", null).toPath();
+                }else{
+                    testDir = Files.createFile(rootDir.resolve("testFile"));
+                }
+            }else{
+                mockDir = mock(File.class);
+                when(mockDir.getParentFile()).thenReturn(rootDir.toFile());
+                if (mkdirOK){
+                    when(mockDir.mkdir()).thenReturn(true);
+                    when(mockDir.exists()).thenReturn(false);
+                }else{
+                    when(mockDir.mkdir()).thenReturn(false);
+                    when(mockDir.exists()).thenReturn(false);
+                }
+                when(mockDir.toPath()).thenReturn(rootDir.resolve("testDir"));
+            }
+            if(oldLayout){
+                Files.createFile(rootDir.resolve("file.txn"));
+            }
+        }
+
+        @Parameterized.Parameters
+        public static Collection<Object[]> data() {
+            return Arrays.asList(new Object[][]{
+                    // valid case
+                    {true, true, true, false, null},
+                    // directory esistente
+                    {true, false, false, false, null},
+                    // file esistente
+                    {true, true, false, true, null},
+                    // directory non esistente, mkdir fallisce
+                    {false, true, false, false, IOException.class},
+                    // directory non esistente, mkdir fallisce
+                    {false, true, false, false, IOException.class},
+                    // directory non esistente, mkdir fallisce
+                    {false, true, false, false, IOException.class},
+            });
+        }
+
+        @Test
+        public void testCheckDirectoryStructure() {
+            File dirToTest;
+            if (shouldExist){
+                dirToTest = testDir.toFile();
+            }else
+                dirToTest = mockDir;
+            try {
+                BookieImpl.checkDirectoryStructure(dirToTest);
+                if (expectedException != null){
+                    fail("Expected exception but none was thrown.");
+                }
+
+            }catch (Exception e){
+                if(expectedException == null)
+                    fail("Unexpected exception thrown: " + e.getMessage());
+                if (expectedException != e.getClass()) {
+                    fail("Expected exception of class: " + expectedException + "but obtained of class " + e.getClass());
+                }
+            }
+        }
+
+        @After
+        public void tearDown() throws Exception {
+            if (rootDir != null) {
+                rootDir.toFile().setReadable(true);
+                rootDir.toFile().setExecutable(true);
+            }
+            if (tempDir != null) {
+                tempDir.cleanup();
             }
         }
     }
