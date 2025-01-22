@@ -91,6 +91,8 @@ public class EntryBuilder {
 
         int dataSize = data.length;
 
+
+        //entry without ledgerId, entryId, lastConfirmed
         ByteBuf entry = Unpooled.buffer(dataSize);
         entry.writeBytes(data);
 

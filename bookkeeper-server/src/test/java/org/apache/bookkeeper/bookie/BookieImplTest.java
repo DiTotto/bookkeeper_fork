@@ -65,10 +65,13 @@ public class BookieImplTest {
                     // Classi di equivalenza non valide
                     {createConfig(null, "eth0"), true},          // no advertisedAddress, listeningInterface valida
                     {createConfig("", "eth0"), true},          // advertisedAddress vuoto, listeningInterface valida
+                    {createConfig("", "lo"), true},          // advertisedAddress vuoto, listeningInterface valida
                     {createConfig(null, null), true},            // no advertisedAddress, no listeningInterface
                     {createConfig("", ""), true},            // advertisedAddress vuoto, listeningInterface vuoto
                     {createConfig(null, "invalidIface"), true},  // no advertisedAddress, listeningInterface non risolvibile
 
+                    //aggiunta configurazione per migliorare la coverage indicata da JaCoCo
+                    {createConfig(null, "setHostNameAsBookieId"), true},  // no advertisedAddress, listeningInterface non risolvibile
                     // Boundary
                     {createConfig("256.256.256.256", "eth0"), false},  // advertisedAddress non risolvibile
                     {createConfig("127.0.0.1", "eth99"), false}        // listeningInterface non valida
@@ -86,6 +89,13 @@ public class BookieImplTest {
             conf.setAdvertisedAddress(advertisedAddress);
             if (iface != null) {
                 conf.setListeningInterface(iface);
+            }
+
+            //aggiunta per aumentare coverage con JaCoCo
+            // in questo modo si entra in un if in cui non si entrava prima
+            if(iface != null && iface.equals("setHostNameAsBookieId")) {
+                conf.setListeningInterface("lo");
+                conf.setUseHostNameAsBookieID(true);
             }
             return conf;
         }
@@ -230,12 +240,6 @@ public class BookieImplTest {
         @Parameterized.Parameters
         public static Collection<Object[]> data() {
             return Arrays.asList(new Object[][]{
-                    /*// valid: array di dirs
-                    {new File[]{existingDir, anotherExistingDir}, false},
-                    // array vuoto
-                    {new File[]{}, false},
-                    // invalid: null
-                    {null, true},*/
                     // valid: array di dirs
                     {new File[]{validDir1, validDir2}, false},
                     // Valid: Mixed valid and invalid (file + inaccessible)
@@ -518,78 +522,11 @@ public class BookieImplTest {
     }
 
 
-    /*@RunWith(Parameterized.class)
-    public static class GetListOfEntriesOfLedgerTest{
 
-            private final long ledgerId;
-            //private final long startEntryId;
-            //private final long endEntryId;
-            private final boolean expectException;
-            private BookieImpl bookie;
-
-            /*public GetListOfEntriesOfLedgerTest(long ledgerId, long startEntryId, long endEntryId, boolean expectException) {
-                this.ledgerId = ledgerId;
-                this.startEntryId = startEntryId;
-                this.endEntryId = endEntryId;
-                this.expectException = expectException;
-            }*/
-            /*public GetListOfEntriesOfLedgerTest(long ledgerId, boolean expectException) {
-                this.ledgerId = ledgerId;
-                this.expectException = expectException;
-            }
-
-            @Before
-            public void setup() throws Exception {
-
-
-
-                ServerConfiguration conf = TestBKConfiguration.newServerConfiguration();
-
-                bookie = new TestBookieImpl(conf);
-
-
-            }
-
-            @Parameterized.Parameters
-            public static Collection<Object[]> data() {
-                return Arrays.asList(new Object[][]{
-                        // valid
-                        /*{1, 1, 10, false},   // ledgerId, startEntryId, endEntryId validi
-                        {1, 1, 1, false},    // ledgerId, startEntryId, endEntryId validi
-                        {1, 10, 1, false},   // ledgerId, startEntryId, endEntryId validi
-                        // invalid
-                        {0, 1, 10, true},    // ledgerId non valido
-                        {1, 0, 10, true},    // startEntryId non valido
-                        {1, 1, 0, true},     // endEntryId non valido
-                        {0, 0, 0, true},     // ledgerId, startEntryId, endEntryId non validi
-                *//*
-                        {1,false}
-                });
-            }
-
-            @Test
-            public void testGetListOfEntriesOfLedger() {
-                try {
-                    //bookie.getListOfEntriesOfLedger(ledgerId, startEntryId, endEntryId);
-                    bookie.getListOfEntriesOfLedger(ledgerId);
-                    if (expectException) {
-                        fail("Expected exception but none was thrown.");
-                    }
-                } catch (Exception e) {
-                    if (!expectException) {
-                        fail("Unexpected exception: " + e.getMessage());
-                    }
-                }
-            }
-
-    }
-*/
     @RunWith(Parameterized.class)
     public static class GetListOfEntriesOfLedgerTest{
 
         private final long ledgerId;
-        //private final long startEntryId;
-        //private final long endEntryId;
         private final boolean expectException;
         private final ByteBuf entry;
         private final boolean ackBeforeSync;
@@ -597,21 +534,10 @@ public class BookieImplTest {
         private final Object ctx;
         private final byte[] masterKey;
 
-        //private final Long testLedgerId;
-        //private final boolean useWatcher;
         private final Class<? extends Exception> exceptionClass;
         private BookieImpl bookie;
 
-            /*public GetListOfEntriesOfLedgerTest(long ledgerId, long startEntryId, long endEntryId, boolean expectException) {
-                this.ledgerId = ledgerId;
-                this.startEntryId = startEntryId;
-                this.endEntryId = endEntryId;
-                this.expectException = expectException;
-            }*/
-            /*public GetListOfEntriesOfLedgerTest(long ledgerId, boolean expectException) {
-                this.ledgerId = ledgerId;
-                this.expectException = expectException;
-            }*/
+
             public GetListOfEntriesOfLedgerTest(long ledgerId1, ByteBuf entry, boolean ackBeforeSync, BookkeeperInternalCallbacks.WriteCallback cb,
                                                 Object ctx, byte[] masterKey, Long testLedgerId,
                                                 boolean useWatcher, boolean expectException, Class<? extends Exception> exceptionClass) {
@@ -628,30 +554,14 @@ public class BookieImplTest {
 
             @Before
             public void setup() throws Exception {
-
-
-
                 ServerConfiguration conf = TestBKConfiguration.newServerConfiguration();
-
                 bookie = new TestBookieImpl(conf);
-
-
             }
 
             @Parameterized.Parameters
             public static Collection<Object[]> data() {
                 return Arrays.asList(new Object[][]{
-                        // valid
-                        /*{1, 1, 10, false},   // ledgerId, startEntryId, endEntryId validi
-                        {1, 1, 1, false},    // ledgerId, startEntryId, endEntryId validi
-                        {1, 10, 1, false},   // ledgerId, startEntryId, endEntryId validi
-                        // invalid
-                        {0, 1, 10, true},    // ledgerId non valido
-                        {1, 0, 10, true},    // startEntryId non valido
-                        {1, 1, 0, true},     // endEntryId non valido
-                        {0, 0, 0, true},     // ledgerId, startEntryId, endEntryId non validi
-                */
-                        //{1,false}
+
                         // valid case
                         {1, EntryBuilder.createValidEntryWithLedgerId(1), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, true, false, null},
                         // invalid case
@@ -938,6 +848,8 @@ public class BookieImplTest {
                     {EntryBuilder.createValidEntryWithLedgerId(1L), mockWriteCallback(), new Object(), "Valida".getBytes(), 2L, false, null},
                     // entry valida perchè anche se il ledgerID è diverso da quello passato al momento della creazione,
                     // nel momento in cui viene settato l'explicitLac, il ledgerId viene preso da quello passato
+
+                    {EntryBuilder.createValidEntryWithLedgerId(1L), mockWriteCallback(), new Object(), "Valida".getBytes(), 99L, false, null},
 
             });
         }
