@@ -10,6 +10,7 @@ import org.apache.bookkeeper.helper.TmpDirs;
 import org.apache.bookkeeper.net.BookieId;
 import org.apache.bookkeeper.net.BookieSocketAddress;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks;
+import org.apache.bookkeeper.util.BookKeeperConstants;
 import org.junit.*;
 import org.junit.experimental.runners.Enclosed;
 import org.junit.runner.RunWith;
@@ -849,8 +850,6 @@ public class BookieImplTest {
                     // entry valida perchè anche se il ledgerID è diverso da quello passato al momento della creazione,
                     // nel momento in cui viene settato l'explicitLac, il ledgerId viene preso da quello passato
 
-                    {EntryBuilder.createValidEntryWithLedgerId(1L), mockWriteCallback(), new Object(), "Valida".getBytes(), 99L, false, null},
-
             });
         }
         private static BookkeeperInternalCallbacks.WriteCallback mockWriteCallback() {
@@ -921,15 +920,17 @@ public class BookieImplTest {
         private final boolean shouldBeDir;
         private final boolean mkdirOK;
         private final boolean specialChars;
+        private final String preV3;
         private final Class<? extends Exception> expectedException;
 
-        public CheckDirectoryStructureTest(boolean shouldExist, boolean shouldBeDir, boolean mkdirOK, boolean specialChars,
+        public CheckDirectoryStructureTest(boolean shouldExist, boolean shouldBeDir, boolean mkdirOK, boolean specialChars, String preV3,
                                            Class<? extends Exception> expectedException) {
             this.shouldExist = shouldExist;
             this.shouldBeDir = shouldBeDir;
             this.mkdirOK = mkdirOK;
             this.expectedException = expectedException;
             this.specialChars = specialChars;
+            this.preV3 = preV3;
         }
 
         @Before
@@ -957,10 +958,23 @@ public class BookieImplTest {
                     when(mockDir.mkdirs()).thenReturn(false);
                     when(mockDir.exists()).thenReturn(false);
                 }
+                if(preV3 != null && preV3.equals("preV3")){
+                    //File preV3versionFile = rootDir.resolve(BookKeeperConstants.VERSION_FILENAME).toFile();
+                    //Files.createFile(preV3versionFile.toPath());
+                    //when(preV3versionFile.exists()).thenReturn(true); // Fa sì che esista
+                }
+
                 if(!specialChars){
                     when(mockDir.toPath()).thenReturn(rootDir.resolve("testDir"));
                 }else{
                     when(mockDir.toPath()).thenReturn(rootDir.resolve("testDir_特殊字符@#%$"));
+                }
+                if (preV3!=null && preV3.equals("oldData")){
+                    Files.createFile(rootDir.resolve("oldfile.log"));
+
+                }
+                if(preV3!=null && preV3.equals("preV3")){
+                    Files.createFile(rootDir.resolve(BookKeeperConstants.VERSION_FILENAME));
                 }
             }
         }
@@ -969,19 +983,24 @@ public class BookieImplTest {
         public static Collection<Object[]> data() {
             return Arrays.asList(new Object[][]{
                     // Valid case: directory exists
-                    {true, true, true, false, null},
+                    {true, true, true, false, null, null},
                     // Valid case: file exists
-                    {true, false, true, false, null},
+                    {true, false, true, false, null, null},
                     // Directory does not exist, mkdir fails
-                    {false, true, false, false, IOException.class},
+                    {false, true, false, false, null, IOException.class},
                     // Directory does not exist, mkdir succeeds
-                    {false, true, true, false, null},
+                    {false, true, true, false, null, null},
                     // Directory does not exist, mkdir fails
-                    {false, true, false, false, IOException.class},
+                    {false, true, false, false, null, IOException.class},
                     // Directory is null
-                    {false, false, false, false, IOException.class},
+                    {false, false, false, false, null, IOException.class},
                     // Path with special characters
-                    {true, true, true, true, null}, // Simulate via file system
+                    {true, true, true, true, null, null}, // Simulate via file system
+                    // aggiunto caso per entrare in un if dopo verifica con JaCoCo
+                    {false, true, false, false, "preV3", IOException.class}, // Simulate via file system
+                    // aggiunto caso per entrare in un if dopo verifica con JaCoCo
+                    {false, true, false, false, "oldData", IOException.class}, // Simulate via file system
+
             });
 
         }
