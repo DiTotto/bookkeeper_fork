@@ -11,6 +11,7 @@ import org.apache.bookkeeper.net.BookieId;
 import org.apache.bookkeeper.net.BookieSocketAddress;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks;
 import org.apache.bookkeeper.util.BookKeeperConstants;
+import org.apache.logging.log4j.Level;
 import org.junit.*;
 import org.junit.experimental.runners.Enclosed;
 import org.junit.runner.RunWith;
@@ -25,6 +26,7 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collection;
 
+import static jdk.nashorn.internal.runtime.linker.JavaAdapterServices.getHandle;
 import static org.apache.bookkeeper.helper.DirectoryTestHelper.*;
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
@@ -32,6 +34,9 @@ import static org.mockito.Mockito.*;
 import java.io.File;
 import java.net.UnknownHostException;
 import java.util.PrimitiveIterator;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.Level;
 
 import io.netty.buffer.Unpooled;
 
@@ -534,13 +539,14 @@ public class BookieImplTest {
         private final BookkeeperInternalCallbacks.WriteCallback cb;
         private final Object ctx;
         private final byte[] masterKey;
+        private final boolean setLogger;
 
         private final Class<? extends Exception> exceptionClass;
         private BookieImpl bookie;
 
 
             public GetListOfEntriesOfLedgerTest(long ledgerId1, ByteBuf entry, boolean ackBeforeSync, BookkeeperInternalCallbacks.WriteCallback cb,
-                                                Object ctx, byte[] masterKey, Long testLedgerId,
+                                                Object ctx, byte[] masterKey, Long testLedgerId, boolean setLogger,
                                                 boolean useWatcher, boolean expectException, Class<? extends Exception> exceptionClass) {
                 this.ledgerId = ledgerId1;
                 this.entry = entry;
@@ -550,6 +556,7 @@ public class BookieImplTest {
                 this.masterKey = masterKey;
                 this.expectException = expectException;
                 this.exceptionClass = exceptionClass;
+                this.setLogger = setLogger;
             }
 
 
@@ -557,6 +564,12 @@ public class BookieImplTest {
             public void setup() throws Exception {
                 ServerConfiguration conf = TestBKConfiguration.newServerConfiguration();
                 bookie = new TestBookieImpl(conf);
+
+                if( setLogger ) {
+                    // Imposta il livello di log a TRACE per il logger della classe Bookie
+                    Logger logger = LogManager.getLogger("org.apache.bookkeeper.bookie.Bookie");
+                    ((org.apache.logging.log4j.core.Logger) logger).setLevel(Level.TRACE);
+                }
             }
 
             @Parameterized.Parameters
@@ -564,10 +577,15 @@ public class BookieImplTest {
                 return Arrays.asList(new Object[][]{
 
                         // valid case
-                        {1, EntryBuilder.createValidEntryWithLedgerId(1), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, true, false, null},
+                        //{1, EntryBuilder.createValidEntryWithLedgerId(1), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, false, true, false, null},
                         // invalid case
-                        {2, EntryBuilder.createValidEntryWithLedgerId(1), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, true, true, Bookie.NoLedgerException.class},
-                        {2, EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, true, true, Bookie.NoLedgerException.class},
+                       // {2, EntryBuilder.createValidEntryWithLedgerId(1), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, false, true, true, Bookie.NoLedgerException.class},
+                       // {2, EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, false, true, true, Bookie.NoLedgerException.class},
+                        {2, EntryBuilder.createInvalidEntry(), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, false, true, true, Bookie.NoLedgerException.class},
+                        {2, EntryBuilder.createInvalidEntryWithoutMetadata(), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, false, true, true, null},
+                        // caso aggiunto per BADUA - viene settato a 1 il setLogger che nel setup venga attivato il logger
+                        {2, EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, true, true, true, Bookie.NoLedgerException.class},
+
 
                 });
             }
@@ -578,6 +596,7 @@ public class BookieImplTest {
             @Test
             public void testGetListOfEntriesOfLedger() {
                 try {
+
                     bookie.addEntry(entry, ackBeforeSync, cb, ctx, masterKey);
                     //bookie.getListOfEntriesOfLedger(ledgerId, startEntryId, endEntryId);
                     PrimitiveIterator.OfLong entriesOfLedger = bookie.getListOfEntriesOfLedger(ledgerId);
