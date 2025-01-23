@@ -75,17 +75,21 @@ public class BookieImplTest {
                     {createConfig(null, null), true},            // no advertisedAddress, no listeningInterface
                     {createConfig("", ""), true},            // advertisedAddress vuoto, listeningInterface vuoto
                     {createConfig(null, "invalidIface"), true},  // no advertisedAddress, listeningInterface non risolvibile
+                    // Boundary
+                    {createConfig("256.256.256.256", "eth0"), false},  // advertisedAddress non risolvibile
+                    {createConfig("127.0.0.1", "eth99"), false},        // listeningInterface non valida
+                    /**
+                     * in questi ultimi due casi mi aspetto venga sollevata un'eccezione ma dal test risulta che invece non viene sollevata. Per ora lascio cosi e poi
+                     * vedo se è effettivamente un problema o se non viene sollevata perche la funzione gestisce correttamente qlo specifico caso in cui l'indirizzo non è valido
+                     * o l'interfaccia non è valida
+                    */
+
 
                     //aggiunta configurazione per migliorare la coverage indicata da JaCoCo
                     {createConfig(null, "setHostNameAsBookieId"), true},  // no advertisedAddress, listeningInterface non risolvibile
-                    // Boundary
-                    {createConfig("256.256.256.256", "eth0"), false},  // advertisedAddress non risolvibile
-                    {createConfig("127.0.0.1", "eth99"), false}        // listeningInterface non valida
-                    /**
-                    * in questi ultimi due casi mi aspetto venga sollevata un'eccezione ma dal test risulta che invece non viene sollevata. Per ora lascio cosi e poi
-                     * vedo se è effettivamente un problema o se non viene sollevata perche la funzione gestisce correttamente qlo specifico caso in cui l'indirizzo non è valido
-                     * o l'interfaccia non è valida
-                     */
+
+                    {createConfigShortName(null, null, 1111, true, true, true), false}
+
             });
         }
 
@@ -103,6 +107,21 @@ public class BookieImplTest {
                 conf.setListeningInterface("lo");
                 conf.setUseHostNameAsBookieID(true);
             }
+            return conf;
+        }
+
+        // Helper per creare configurazioni
+        private static ServerConfiguration createConfigShortName(String advertisedAddress, String iface, int bookiePort, boolean allowLoopback, boolean useHostName, boolean useShortName) {
+            ServerConfiguration conf = new ServerConfiguration();
+            conf.setAdvertisedAddress(advertisedAddress);
+            if (iface != null) {
+                conf.setListeningInterface(iface);
+            }
+
+            conf.setBookiePort(bookiePort);
+            conf.setAllowLoopback(allowLoopback);
+            conf.setUseHostNameAsBookieID(useHostName);
+            conf.setUseShortHostName(useShortName);
             return conf;
         }
 
@@ -176,6 +195,7 @@ public class BookieImplTest {
                 conf.setBookieId(bookieId);
             return conf;
         }
+
 
         // Test principale
         @Test
@@ -577,16 +597,21 @@ public class BookieImplTest {
                 return Arrays.asList(new Object[][]{
 
                         // valid case
-                        //{1, EntryBuilder.createValidEntryWithLedgerId(1), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, false, true, false, null},
+                        {1, EntryBuilder.createValidEntryWithLedgerId(1), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, false, true, false, null},
                         // invalid case
-                       // {2, EntryBuilder.createValidEntryWithLedgerId(1), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, false, true, true, Bookie.NoLedgerException.class},
-                       // {2, EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, false, true, true, Bookie.NoLedgerException.class},
+                    //    {2, EntryBuilder.createValidEntryWithLedgerId(1), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, false, true, true, Bookie.NoLedgerException.class},
+                     //   {2, EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, false, true, true, Bookie.NoLedgerException.class},
+
+                        // caso aggiunto per BADUA - viene creata una entry invalida cosi che
                         {2, EntryBuilder.createInvalidEntry(), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, false, true, true, Bookie.NoLedgerException.class},
                         {2, EntryBuilder.createInvalidEntryWithoutMetadata(), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, false, true, true, null},
                         // caso aggiunto per BADUA - viene settato a 1 il setLogger che nel setup venga attivato il logger
                         {2, EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, true, true, true, Bookie.NoLedgerException.class},
 
 
+                        {1, EntryBuilder.createValidEntryWithLedgerId(1), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, false, true, false, null},
+                        {2, EntryBuilder.createValidEntryWithLedgerId(1), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, false, true, true, Bookie.NoLedgerException.class},
+                        {2, EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), "ValidMasterKey".getBytes(), null, false, true, true, Bookie.NoLedgerException.class},
                 });
             }
             private static BookkeeperInternalCallbacks.WriteCallback mockWriteCallback() {
