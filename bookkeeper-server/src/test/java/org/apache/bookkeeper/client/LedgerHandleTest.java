@@ -14,6 +14,8 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.mock;
@@ -273,5 +275,181 @@ public class LedgerHandleTest {
             }
         }
     }
+
+
+    @RunWith(Parameterized.class)
+    public static class LedgerHandleAsyncReadLastConfirmedAndEntryTest extends BookKeeperClusterTestCase {
+
+        LedgerHandle ledgerHandle;
+        private final boolean expectException;
+        private Long entryId;
+        private final boolean parallel;
+        private final Long timeOutInMillis;
+        private final Object context;
+        private final int numOfEntry;
+        private final int expectErrorCode;
+        private final boolean useCallBack;
+
+        // Costruttore per inizializzare i parametri del test
+        public LedgerHandleAsyncReadLastConfirmedAndEntryTest(Long entryId, boolean parallel, Long timeOutInMillis, boolean useCallback, int numOfEntry,
+                                                              Object context, boolean expectException, int expectedErrorCode) {
+            super(4);
+            this.entryId = entryId;
+            this.parallel = parallel;
+            this.timeOutInMillis = timeOutInMillis;
+            this.expectException = expectException;
+            this.context = context;
+            this.numOfEntry = numOfEntry;
+            this.expectErrorCode = expectedErrorCode;
+
+            this.useCallBack = useCallback;
+        }
+
+        private static AsyncCallback.ReadCallback mockReadCallback() {
+            return (rc, ledgerHandle, entries, ctx) -> {
+                if (rc == BKException.Code.OK) {
+                    // Operazione riuscita: entries dovrebbe contenere dati validi
+                    assertNotNull("Entries should not be null on successful read", entries);
+                    assertTrue("Entries should contain at least one element", entries.hasMoreElements());
+                    System.out.println("ReadCallback succeeded: entries fetched.");
+                } else {
+                    // Operazione fallita: stampa un messaggio con il codice di errore
+                    System.out.println("ReadCallback failed with result code: " + rc);
+                    assertNull("Entries should be null on failure", entries);
+                }
+            };
+        }
+
+
+        // Parametri del test (classi di equivalenza e boundary)
+        @Parameterized.Parameters
+        public static Collection<Object[]> data() {
+            return Arrays.asList(new Object[][]{
+                    // {entryId, parallel, timeOutInMillis, useCallback, numOfEntry, context, expectException, expectedErrorCode}
+                    ///valid
+                    {1L, false, 100L, true, 5, new Object(), false, BKException.Code.OK}, //callBack
+                    {1L, true, 100L, false, 5, new Object(), false, BKException.Code.OK}, //no callBack
+                    {1L, false, 100L, true, 5, new Object(), false, BKException.Code.OK}, //callBack, no parallelism
+                    {0L, true, 100L, true, 5, new Object(), false, BKException.Code.OK}, //entryId = 0
+                    {0L, true, 100L, true, 0, new Object(), false, BKException.Code.OK}, //numOfEntry = 0
+                    ///invalid
+                    {5L, true, 100L, true, 3, new Object(), true, BKException.Code.OK}, //entryId = 0
+                    {-1L, true, 100L, true, 3, new Object(), true, BKException.Code.NoSuchEntryException}, //no callBack
+                    {Long.MAX_VALUE, true, 100L, true, 5, new Object(), true, BKException.Code.NoSuchEntryException}, //entryId = Long.MAX_VALUE
+                    {1L, true, 100L, true, 0, new Object(), true, BKException.Code.NoSuchEntryException}, //numOfEntry = 0
+                    
+            });
+        }
+
+
+        @Before
+        public void setUp() throws Exception {
+            super.setUp("/ledgers");
+            ledgerHandle = bkc.createLedger(BookKeeper.DigestType.CRC32, "pwd".getBytes());
+
+            if(numOfEntry == 0){
+                return;
+            }else{
+                for (int i = 0; i < numOfEntry; i++) {
+                    ledgerHandle.addEntry(("Entry " + i).getBytes()); //entryId assume l'id della ultima entry inserita
+                }
+            }
+        }
+
+        @After
+        public void tearDownTestEnvironment() {
+            try {
+                ledgerHandle.close();
+                super.tearDown();
+            } catch (Exception e) {
+                e.printStackTrace();
+
+            }
+        }
+
+
+
+        // Test principale
+        @Test
+        public void testAsyncReadLastConfirmedAndEntry() {
+            try {
+                if(useCallBack) {
+
+                    AtomicInteger resultCode = new AtomicInteger();
+                    AtomicBoolean isComplete = new AtomicBoolean(false);
+                    AtomicLong rLAC = new AtomicLong();
+                    AtomicReference<LedgerEntry> rEntry = new AtomicReference<>();
+                    long lastEntryId = ledgerHandle.getLastAddConfirmed();
+                    ledgerHandle.asyncReadLastConfirmedAndEntry(this.entryId, this.timeOutInMillis, this.parallel, (rc, lastConfirmed, entry, ctx) -> {
+                        resultCode.set(rc);
+                        rEntry.set(entry);
+                        rLAC.set(lastConfirmed);
+
+                        isComplete.set(true);
+
+                        if (resultCode.get() == BKException.Code.OK) {
+                            if(!expectException)
+                                assertNotNull("Entries should not be null on successful read", rEntry.get());
+                            else{
+                                assertNull("Entries should be null on failure", rEntry.get());
+                            }
+
+                            if(entryId > lastEntryId){
+                                //assertEquals("Expected failure with specific error code", BKException.Code.NoSuchEntryException, rc);
+                                assertNull(rEntry.get());
+                                assertEquals(lastEntryId, rLAC.get());
+                            }else if (entryId == lastEntryId){
+                                assertEquals("Expected successful read", BKException.Code.OK, resultCode.get());
+                                assertNotNull(rEntry.get());
+                                assertEquals(lastEntryId, rLAC.get());
+                                assertEquals("Entry", new String(rEntry.get().getEntry()));
+
+                            }else {
+                                assertNull(rEntry.get());
+                            }
+                        } else {
+                            assertNull(rEntry.get());
+
+                        }
+
+
+                    }, context);
+
+                    //Awaitility.await().untilTrue(isComplete);
+
+
+                }else{
+                    ledgerHandle.asyncReadLastConfirmedAndEntry(this.entryId, this.timeOutInMillis, this.parallel, null, context);
+                    if (expectException) {
+                        fail("Expected exception, but method executed successfully.");
+                    }
+                }
+
+            }catch (ArrayIndexOutOfBoundsException e){
+                if (!expectException) {
+                    fail("Did not expect an exception, but got: " + e.getMessage());
+                } else {
+                    assertTrue("Expected exception, but got: " + e.getClass().getSimpleName(),
+                            e instanceof ArrayIndexOutOfBoundsException);
+                }
+            }
+            catch (NullPointerException e) {
+                if (!expectException) {
+                    fail("Did not expect an exception, but got: " + e.getMessage());
+                } else {
+                    assertTrue("Expected exception, but got: " + e.getClass().getSimpleName(),
+                            e instanceof NullPointerException);
+                }
+            } catch (Exception e) {
+                if (!expectException) {
+                    fail("Did not expect an exception, but got: " + e.getMessage());
+                } else {
+                    assertTrue("Expected exception, but got: " + e.getClass().getSimpleName(),
+                            e instanceof BKException);
+                }
+            }
+        }
+    }
+
 
 }
