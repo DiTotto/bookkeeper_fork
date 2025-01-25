@@ -583,6 +583,116 @@ public class LedgerHandleTest {
         }
     }
 
+    @RunWith(Parameterized.class)
+    public static class LedgerHandleReadLastConfirmedTest extends BookKeeperClusterTestCase {
+
+        LedgerHandle ledgerHandle;
+        private final boolean expectException;
+        private Long entryId;
+        private final int numOfEntry;
+        private final int expectErrorCode;
+
+
+        // Costruttore per inizializzare i parametri del test
+        public LedgerHandleReadLastConfirmedTest(int numOfEntry,  boolean expectException, int expectedErrorCode) {
+            super(4);
+            this.entryId = entryId;
+            this.expectException = expectException;
+            this.expectErrorCode = expectedErrorCode;
+            this.numOfEntry = numOfEntry;
+
+        }
+
+
+        // Parametri del test (classi di equivalenza e boundary)
+        @Parameterized.Parameters
+        public static Collection<Object[]> data() {
+            return Arrays.asList(new Object[][]{
+                    // {entryId, parallel, timeOutInMillis, useCallback, numOfEntry, context, expectException, expectedErrorCode}
+                    ///valid
+                    {8, false, BKException.Code.OK},
+                    /// invalid
+                    {0, true, BKException.Code.NoSuchEntryException},
+                    {-1, true, BKException.Code.NoSuchEntryException},
+//
+            });
+        }
+
+
+        @Before
+        public void setUp() throws Exception {
+            super.setUp("/ledgers");
+            ledgerHandle = bkc.createLedger(BookKeeper.DigestType.CRC32, "pwd".getBytes());
+
+            if(numOfEntry <= 0){
+                return;
+            }else{
+                for (int i = 0; i < numOfEntry; i++) {
+                    ledgerHandle.addEntry(("Entry " + i).getBytes()); //entryId assume l'id della ultima entry inserita
+                }
+            }
+        }
+
+        @After
+        public void tearDownTestEnvironment() {
+            try {
+                ledgerHandle.close();
+                super.tearDown();
+            } catch (Exception e) {
+                e.printStackTrace();
+
+            }
+        }
+
+
+
+        // Test principale
+        @Test
+        public void testReadLastConfirmed() {
+            try {
+
+                long lastConfirmed = ledgerHandle.readLastConfirmed();
+                if( lastConfirmed >= 0) {
+                    if (!expectException) {
+                        //assertEquals("Expected successful read", BKException.Code.OK, BKException.Code.OK);
+                        assert(lastConfirmed >= 0);
+                    } else {
+                        fail("Did not expect an exception, but got: " + lastConfirmed);
+                    }
+                }
+                else{
+                    if (!expectException) {
+                        fail("Did not expect an exception, but got: " + lastConfirmed);
+                    } else {
+                        assertEquals(-1, lastConfirmed);
+                    }
+                }
+
+            }catch (ArrayIndexOutOfBoundsException e){
+                if (!expectException) {
+                    fail("Did not expect an exception, but got: " + e.getMessage());
+                } else {
+                    assertTrue("Expected exception, but got: " + e.getClass().getSimpleName(),
+                            e instanceof ArrayIndexOutOfBoundsException);
+                }
+            }
+            catch (NullPointerException e) {
+                if (!expectException) {
+                    fail("Did not expect an exception, but got: " + e.getMessage());
+                } else {
+                    assertTrue("Expected exception, but got: " + e.getClass().getSimpleName(),
+                            e instanceof NullPointerException);
+                }
+            } catch (Exception e) {
+                if (!expectException) {
+                    fail("Did not expect an exception, but got: " + e.getMessage());
+                } else {
+                    assertTrue("Expected exception, but got: " + e.getClass().getSimpleName(),
+                            e instanceof BKException);
+                }
+            }
+        }
+    }
 
 
 }
