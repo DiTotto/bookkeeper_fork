@@ -4,6 +4,8 @@ package org.apache.bookkeeper.client;
 import io.reactivex.rxjava3.core.Completable;
 import org.apache.bookkeeper.bookie.BookieException;
 import org.apache.bookkeeper.client.api.LedgerEntries;
+import org.apache.bookkeeper.conf.ClientConfiguration;
+import org.apache.bookkeeper.conf.TestBKConfiguration;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks;
 import org.awaitility.Awaitility;
 import org.junit.After;
@@ -151,7 +153,7 @@ public class LedgerHandleTest {
                 }
             }
         }
-    }
+    } //controllato
 
 
     @RunWith(Parameterized.class)
@@ -694,7 +696,7 @@ public class LedgerHandleTest {
                 }
             }
         }
-    }
+    } //forse si puo aumentare coverage
 
     @RunWith(Parameterized.class)
     public static class LedgerHandleAsyncAddEntryTest extends BookKeeperClusterTestCase {
@@ -835,7 +837,7 @@ public class LedgerHandleTest {
                 }
             }
         }
-    }
+    } //controllato con jacoco
 
 
     @RunWith(Parameterized.class)
@@ -847,16 +849,18 @@ public class LedgerHandleTest {
         private final int numOfEntry;
         private final int expectErrorCode;
         private final boolean useCallBack;
+        private final boolean useV2Protocol;
+        private BookKeeper bookk;
 
         // Costruttore per inizializzare i parametri del test
-        public LedgerHandleAsyncReadLastConfirmedTest(boolean useCallback, int numOfEntry,
+        public LedgerHandleAsyncReadLastConfirmedTest(boolean useV2Protocol, boolean useCallback, int numOfEntry,
                                                               Object context, boolean expectException, int expectedErrorCode) {
             super(4);
             this.expectException = expectException;
             this.context = context;
             this.numOfEntry = numOfEntry;
             this.expectErrorCode = expectedErrorCode;
-
+            this.useV2Protocol = useV2Protocol;
             this.useCallBack = useCallback;
         }
 
@@ -867,11 +871,14 @@ public class LedgerHandleTest {
             return Arrays.asList(new Object[][]{
                     // {useCallback, numOfEntry, context, expectException, expectedErrorCode}
                     ///valid
-                    {true, 5, new Object(), false, BKException.Code.OK}, //callBack
-                    {false, 5, new Object(), false, BKException.Code.OK}, //no callBack
-                    {true, 0, new Object(), true, BKException.Code.NoSuchEntryException},
+                    {false, true, 5, new Object(), false, BKException.Code.OK}, //callBack
+                    {false, false, 5, new Object(), false, BKException.Code.OK}, //no callBack
+                    {false, true, 0, new Object(), true, BKException.Code.NoSuchEntryException},
                     ///invalid
-                    {true, -1, new Object(), true, BKException.Code.NoSuchEntryException},
+                    {false, true, -1, new Object(), true, BKException.Code.NoSuchEntryException},
+
+                    // aggiunto per jacoco
+                    {true, true, 5, new Object(), false, BKException.Code.OK}, //callBack
             });
         }
 
@@ -879,7 +886,18 @@ public class LedgerHandleTest {
         @Before
         public void setUp() throws Exception {
             super.setUp("/ledgers");
-            ledgerHandle = bkc.createLedger(BookKeeper.DigestType.CRC32, "pwd".getBytes());
+            if(useV2Protocol){
+
+                ClientConfiguration conf = TestBKConfiguration.newClientConfiguration();
+                conf.setMetadataServiceUri(zkUtil.getMetadataServiceUri());
+                conf.setExplictLacInterval(1);
+                conf.setUseV2WireProtocol(useV2Protocol);
+                bookk = new BookKeeper(conf);
+                ledgerHandle = bookk.createLedger(BookKeeper.DigestType.CRC32, "pwd".getBytes());
+            }
+            else{
+                ledgerHandle = bkc.createLedger(BookKeeper.DigestType.CRC32, "pwd".getBytes());
+            }
 
             if(numOfEntry == 0){
                 return;
@@ -968,5 +986,5 @@ public class LedgerHandleTest {
                 }
             }
         }
-    }
+    } //aumentata coverage con jacoco
 }
