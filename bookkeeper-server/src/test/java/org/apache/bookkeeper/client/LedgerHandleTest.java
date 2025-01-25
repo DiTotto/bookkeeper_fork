@@ -1,6 +1,9 @@
 package org.apache.bookkeeper.client;
 
 
+import io.reactivex.rxjava3.core.Completable;
+import org.apache.bookkeeper.bookie.BookieException;
+import org.apache.bookkeeper.client.api.LedgerEntries;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks;
 import org.awaitility.Awaitility;
 import org.junit.After;
@@ -12,6 +15,8 @@ import org.junit.runners.Parameterized;
 
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -450,6 +455,134 @@ public class LedgerHandleTest {
             }
         }
     }
+    @RunWith(Parameterized.class)
+    public static class LedgerHandleAsyncReadTest extends BookKeeperClusterTestCase {
+
+        private LedgerHandle ledgerHandle;
+        private final Long firstEntry;
+        private final Long lastEntry;
+        private final boolean expectException;
+        private final Long numEntries;
+
+        // Costruttore per inizializzare i parametri del test
+        public LedgerHandleAsyncReadTest(Long numEntries, Long firstEntry, Long lastEntry,
+                                                 boolean expectException) {
+            super(4);
+            this.firstEntry = firstEntry;
+            this.lastEntry = lastEntry;
+            this.expectException = expectException;
+                        this.numEntries = numEntries;
+        }
+
+
+        // Parametri del test (classi di equivalenza e boundary)
+        @Parameterized.Parameters
+        public static Collection<Object[]> data() {
+            return Arrays.asList(new Object[][]{
+                    ///valid
+                    {7L, 1L, 5L,   false},
+                    //{1L, 5L, true,  false},
+//                    {0L, 0L, false,  false, BKException.Code.OK},
+//                    //invalid
+                    {7L, 1L, 12L,   true},
+                    {7L, -1L, 12L,   true},
+                    {7L, 1L, -5L,   true},
+                    {7L, 7L, 5L,   true},
+                    {7L, -1L, Long.MAX_VALUE,   true},
+//                    {-1L, 5L, true,  true, BKException.Code.IncorrectParameterException},
+//                    {-1L, 5L, false,  true, BKException.Code.IncorrectParameterException},
+//                    {5L, -1L, false,  true, BKException.Code.IncorrectParameterException},
+//                    {3L, 1L, true,  true, BKException.Code.IncorrectParameterException},
+//                    {0L, Long.MAX_VALUE, false,  true, BKException.Code.ReadException},
+//                    {Long.MAX_VALUE, Long.MAX_VALUE, false,  true, BKException.Code.ReadException},
+            });
+        }
+
+
+        @Before
+        public void setUp() throws Exception {
+            super.setUp("/ledgers");
+            ledgerHandle = bkc.createLedger(BookKeeper.DigestType.CRC32, "passwd".getBytes());
+
+            for (int i = 0; i < numEntries; i++) {
+                ledgerHandle.addEntry(("Entry " + i).getBytes());
+            }
+        }
+
+        @After
+        public void tearDownTestEnvironment() {
+            try {
+                ledgerHandle.close();
+                super.tearDown();
+            } catch (Exception e) {
+                e.printStackTrace();
+
+            }
+        }
+
+
+        private static BookkeeperInternalCallbacks.WriteCallback mockWriteCallback() {
+            return mock(BookkeeperInternalCallbacks.WriteCallback.class);
+        }
+
+        // Test principale
+        @Test
+        public void testAsyncReadEntries() {
+            try {
+                //ledgerHandle.asyncReadEntries(firstEntry, lastEntry, cb, ctx);
+
+
+                CompletableFuture<LedgerEntries> entries = ledgerHandle.readAsync(firstEntry, lastEntry);
+                entries.whenComplete((ledgerEntries, throwable) -> {
+                    if (throwable != null) {
+                        if (expectException) {
+                            assert (throwable instanceof BKException);
+
+                            //assertTrue("Expected exception, but got: " + throwable.getClass().getSimpleName(),
+                                    //throwable instanceof BKException);
+                        } else {
+                            fail("Did not expect an exception, but got: " + throwable.getMessage());
+                        }
+                    } else {
+                        assertNotNull("Entries should not be null on successful read", entries.join());
+                       //assertTrue("Entries should contain at least one element", entries.join());
+                        long countEntries = 0L;
+                        LedgerEntries ledgerEntries1 = entries.join();
+                        for (org.apache.bookkeeper.client.api.LedgerEntry entry : ledgerEntries1) {
+                            countEntries++;
+                            System.out.println("EntryId: " + entry.getEntryId());
+                        }
+                        assertEquals("Entries should contain exactly " + (lastEntry - firstEntry + 1) + " elements",
+                                (lastEntry - firstEntry + 1), countEntries);
+                    }
+                });
+
+            } catch (CompletionException e) {
+                if (!expectException) {
+                    fail("Did not expect an exception, but got: " + e.getMessage());
+                } else {
+                    assertTrue("Expected exception, but got: " + e.getClass().getSimpleName(),
+                            e instanceof CompletionException);
+                }
+            }
+            catch (NullPointerException e) {
+                if (!expectException) {
+                    fail("Did not expect an exception, but got: " + e.getMessage());
+                } else {
+                    assertTrue("Expected exception, but got: " + e.getClass().getSimpleName(),
+                            e instanceof NullPointerException);
+                }
+            } catch (Exception e) {
+                if (!expectException) {
+                    fail("Did not expect an exception, but got: " + e.getMessage());
+                } else {
+                    assertTrue("Expected exception, but got: " + e.getClass().getSimpleName(),
+                            e instanceof BKException);
+                }
+            }
+        }
+    }
+
 
 
 }
