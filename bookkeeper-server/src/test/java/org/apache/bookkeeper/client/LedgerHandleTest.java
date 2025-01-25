@@ -15,6 +15,7 @@ import org.junit.runners.Parameterized;
 
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Enumeration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -694,5 +695,144 @@ public class LedgerHandleTest {
         }
     }
 
+    @RunWith(Parameterized.class)
+    public static class LedgerHandleAsyncAddEntryTest extends BookKeeperClusterTestCase {
 
+        LedgerHandle ledgerHandle;
+        private final boolean expectException;
+        private Long entryId;
+        private final Object context;
+        private final int numOfEntry;
+        private final int expectErrorCode;
+        private final boolean useCallBack;
+        private final byte[] data;
+
+        // Costruttore per inizializzare i parametri del test
+        public LedgerHandleAsyncAddEntryTest(byte[] data, boolean useCallback, int numOfEntry,
+                                                              Object context, boolean expectException, int expectedErrorCode) {
+            super(4);
+            this.entryId = entryId;
+            this.expectException = expectException;
+            this.context = context;
+            this.numOfEntry = numOfEntry;
+            this.expectErrorCode = expectedErrorCode;
+            this.data = data;
+
+            this.useCallBack = useCallback;
+        }
+
+
+        // Parametri del test (classi di equivalenza e boundary)
+        @Parameterized.Parameters
+        public static Collection<Object[]> data() {
+            return Arrays.asList(new Object[][]{
+                    // {data, useCallback, numOfEntry, context, expectException, expectedErrorCode}
+                    ///valid
+                    {new byte[]{1, 2, 3, 4}, true, 1, new Object(), false, BKException.Code.OK}, //callBack
+                    {new byte[]{1, 2, 3, 4}, false, 1, new Object(), false, BKException.Code.OK}, //callBack
+                    {new byte[0], true, 1, new Object(), false, BKException.Code.OK}, //no callBack
+                    /// invalid
+                    {new byte[]{1, 2, 3, 4}, true, 0, new Object(), true, BKException.Code.NoSuchEntryException}, //numOfEntry = 0
+                    {new byte[0], true, -1, new Object(), true, BKException.Code.NoSuchEntryException}, //numOfEntry = -1
+
+
+
+
+            });
+        }
+
+
+        @Before
+        public void setUp() throws Exception {
+            super.setUp("/ledgers");
+            ledgerHandle = bkc.createLedger(BookKeeper.DigestType.CRC32, "pwd".getBytes());
+
+            if(numOfEntry == 0){
+                return;
+            }else{
+                for (int i = 0; i < numOfEntry; i++) {
+                    ledgerHandle.addEntry(("Entry " + i).getBytes()); //entryId assume l'id della ultima entry inserita
+                }
+            }
+        }
+
+        @After
+        public void tearDownTestEnvironment() {
+            try {
+                ledgerHandle.close();
+                super.tearDown();
+            } catch (Exception e) {
+                e.printStackTrace();
+
+            }
+        }
+
+
+
+        // Test principale
+        @Test
+        public void testAsyncAddEntry() {
+            try {
+                if(useCallBack) {
+
+                    AtomicInteger resultCode = new AtomicInteger();
+                    AtomicBoolean isComplete = new AtomicBoolean(false);
+                    AtomicLong rEntry = new AtomicLong();
+                    long lastEntryId = ledgerHandle.getLastAddConfirmed();
+                    ledgerHandle.asyncAddEntry(this.data, (rc, ledgerHandle, entryId, ctx) -> {
+
+                        rEntry.set(entryId);
+                        isComplete.set(true);
+                    }, context);
+
+                    Awaitility.await().untilTrue(isComplete);
+                    if (resultCode.get() == BKException.Code.OK) {
+                        if(!expectException) {
+                            assertNotNull("Entries should not be null on successful read", rEntry.get());
+                            assertEquals("Expected successful read", this.numOfEntry, rEntry.get());
+                            // Verifica che i byte inseriti siano corretti
+                            Enumeration<LedgerEntry> entries = ledgerHandle.readEntries(rEntry.get(), rEntry.get());
+                            LedgerEntry entry = entries.nextElement();
+
+                            assertArrayEquals("Data should match the bytes added",
+                                    this.data, entry.getEntry());
+                        }
+                        else{
+                            assertEquals("Entries should be 0 on failure", 0, rEntry.get());
+                        }
+
+                    }
+
+                }else{
+                    ledgerHandle.asyncAddEntry(this.data, null, context);
+                    if (expectException) {
+                        fail("Expected exception, but method executed successfully.");
+                    }
+                }
+
+            }catch (ArrayIndexOutOfBoundsException e){
+                if (!expectException) {
+                    fail("Did not expect an exception, but got: " + e.getMessage());
+                } else {
+                    assertTrue("Expected exception, but got: " + e.getClass().getSimpleName(),
+                            e instanceof ArrayIndexOutOfBoundsException);
+                }
+            }
+            catch (NullPointerException e) {
+                if (!expectException) {
+                    fail("Did not expect an exception, but got: " + e.getMessage());
+                } else {
+                    assertTrue("Expected exception, but got: " + e.getClass().getSimpleName(),
+                            e instanceof NullPointerException);
+                }
+            } catch (Exception e) {
+                if (!expectException) {
+                    fail("Did not expect an exception, but got: " + e.getMessage());
+                } else {
+                    assertTrue("Expected exception, but got: " + e.getClass().getSimpleName(),
+                            e instanceof BKException);
+                }
+            }
+        }
+    }
 }
