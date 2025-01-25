@@ -26,7 +26,7 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collection;
 
-import static jdk.nashorn.internal.runtime.linker.JavaAdapterServices.getHandle;
+
 import static org.apache.bookkeeper.helper.DirectoryTestHelper.*;
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;

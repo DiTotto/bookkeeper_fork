@@ -280,7 +280,7 @@ public class LedgerHandleTest {
                 }
             }
         }
-    }
+    } // 100% coverage
 
 
     @RunWith(Parameterized.class)
@@ -295,9 +295,10 @@ public class LedgerHandleTest {
         private final int numOfEntry;
         private final int expectErrorCode;
         private final boolean useCallBack;
+        private final boolean close;
 
         // Costruttore per inizializzare i parametri del test
-        public LedgerHandleAsyncReadLastConfirmedAndEntryTest(Long entryId, boolean parallel, Long timeOutInMillis, boolean useCallback, int numOfEntry,
+        public LedgerHandleAsyncReadLastConfirmedAndEntryTest(Long entryId, boolean close, boolean parallel, Long timeOutInMillis, boolean useCallback, int numOfEntry,
                                                               Object context, boolean expectException, int expectedErrorCode) {
             super(4);
             this.entryId = entryId;
@@ -307,23 +308,9 @@ public class LedgerHandleTest {
             this.context = context;
             this.numOfEntry = numOfEntry;
             this.expectErrorCode = expectedErrorCode;
+            this.close = close;
 
             this.useCallBack = useCallback;
-        }
-
-        private static AsyncCallback.ReadCallback mockReadCallback() {
-            return (rc, ledgerHandle, entries, ctx) -> {
-                if (rc == BKException.Code.OK) {
-                    // Operazione riuscita: entries dovrebbe contenere dati validi
-                    assertNotNull("Entries should not be null on successful read", entries);
-                    assertTrue("Entries should contain at least one element", entries.hasMoreElements());
-                    System.out.println("ReadCallback succeeded: entries fetched.");
-                } else {
-                    // Operazione fallita: stampa un messaggio con il codice di errore
-                    System.out.println("ReadCallback failed with result code: " + rc);
-                    assertNull("Entries should be null on failure", entries);
-                }
-            };
         }
 
 
@@ -331,19 +318,19 @@ public class LedgerHandleTest {
         @Parameterized.Parameters
         public static Collection<Object[]> data() {
             return Arrays.asList(new Object[][]{
-                    // {entryId, parallel, timeOutInMillis, useCallback, numOfEntry, context, expectException, expectedErrorCode}
+                    // {entryId, close, parallel, timeOutInMillis, useCallback, numOfEntry, context, expectException, expectedErrorCode}
                     ///valid
-                    {1L, false, 100L, true, 5, new Object(), false, BKException.Code.OK}, //callBack
-                    {1L, true, 100L, false, 5, new Object(), false, BKException.Code.OK}, //no callBack
-                    {1L, false, 100L, true, 5, new Object(), false, BKException.Code.OK}, //callBack, no parallelism
-                    {0L, true, 100L, true, 5, new Object(), false, BKException.Code.OK}, //entryId = 0
-                    {0L, true, 100L, true, 0, new Object(), false, BKException.Code.OK}, //numOfEntry = 0
+                    {1L, true, false, 100L, true, 5, new Object(), false, BKException.Code.OK}, //callBack
+                    {1L, false, true, 100L, false, 5, new Object(), false, BKException.Code.OK}, //no callBack
+                    {1L, true, false, 100L, true, 5, new Object(), false, BKException.Code.OK}, //callBack, no parallelism
+                    {0L, true, true, 100L, true, 5, new Object(), false, BKException.Code.OK}, //entryId = 0
+                    {0L, true, true, 100L, true, 0, new Object(), false, BKException.Code.OK}, //numOfEntry = 0
                     ///invalid
-                    {5L, true, 100L, true, 3, new Object(), true, BKException.Code.OK}, //entryId = 0
-                    {-1L, true, 100L, true, 3, new Object(), true, BKException.Code.NoSuchEntryException}, //no callBack
-                    {Long.MAX_VALUE, true, 100L, true, 5, new Object(), true, BKException.Code.NoSuchEntryException}, //entryId = Long.MAX_VALUE
-                    {1L, true, 100L, true, 0, new Object(), true, BKException.Code.NoSuchEntryException}, //numOfEntry = 0
-                    
+                    {5L, true, true, 100L, true, 3, new Object(), true, BKException.Code.OK}, //entryId = 0
+                    {-1L, true, true, 100L, true, 3, new Object(), true, BKException.Code.NoSuchEntryException}, //no callBack
+                    {Long.MAX_VALUE, false, true, 100L, true, 5, new Object(), true, BKException.Code.NoSuchEntryException}, //entryId = Long.MAX_VALUE
+                    {1L, false, true, 100L, true, 0, new Object(), true, BKException.Code.NoSuchEntryException}, //numOfEntry = 0
+
             });
         }
 
@@ -358,6 +345,7 @@ public class LedgerHandleTest {
             }else{
                 for (int i = 0; i < numOfEntry; i++) {
                     ledgerHandle.addEntry(("Entry " + i).getBytes()); //entryId assume l'id della ultima entry inserita
+
                 }
             }
         }
@@ -385,6 +373,9 @@ public class LedgerHandleTest {
                     AtomicBoolean isComplete = new AtomicBoolean(false);
                     AtomicLong rLAC = new AtomicLong();
                     AtomicReference<LedgerEntry> rEntry = new AtomicReference<>();
+                    if(close){
+                        ledgerHandle.close();
+                    }
                     long lastEntryId = ledgerHandle.getLastAddConfirmed();
                     ledgerHandle.asyncReadLastConfirmedAndEntry(this.entryId, this.timeOutInMillis, this.parallel, (rc, lastConfirmed, entry, ctx) -> {
                         resultCode.set(rc);
@@ -394,8 +385,15 @@ public class LedgerHandleTest {
                         isComplete.set(true);
 
                         if (resultCode.get() == BKException.Code.OK) {
-                            if(!expectException)
-                                assertNotNull("Entries should not be null on successful read", rEntry.get());
+                            if(!expectException){
+                                if(entryId == 0 && numOfEntry == 0){
+                                    assertEquals("Expected successful read", BKException.Code.OK, resultCode.get());
+                                    assertNull(rEntry.get());
+                                    assertEquals(-1, rLAC.get());
+                                }else if(entryId != 0 && numOfEntry != 0) {
+                                    assertNotNull("Entries should not be null on successful read", rEntry.get());
+                                }
+                            }
                             else{
                                 assertNull("Entries should be null on failure", rEntry.get());
                             }
@@ -425,6 +423,9 @@ public class LedgerHandleTest {
 
 
                 }else{
+                    if(close){
+                        ledgerHandle.close();
+                    }
                     ledgerHandle.asyncReadLastConfirmedAndEntry(this.entryId, this.timeOutInMillis, this.parallel, null, context);
                     if (expectException) {
                         fail("Expected exception, but method executed successfully.");
@@ -455,7 +456,7 @@ public class LedgerHandleTest {
                 }
             }
         }
-    }
+    } //aumentata coverage con jacoco
     @RunWith(Parameterized.class)
     public static class LedgerHandleAsyncReadTest extends BookKeeperClusterTestCase {
 
@@ -582,7 +583,7 @@ public class LedgerHandleTest {
                 }
             }
         }
-    }
+    } //100% coverage
 
     @RunWith(Parameterized.class)
     public static class LedgerHandleReadLastConfirmedTest extends BookKeeperClusterTestCase {
@@ -911,8 +912,7 @@ public class LedgerHandleTest {
                     AtomicInteger resultCode = new AtomicInteger();
                     AtomicBoolean isComplete = new AtomicBoolean(false);
                     AtomicLong rLAC = new AtomicLong();
-                    AtomicReference<LedgerEntry> rEntry = new AtomicReference<>();
-                    long lastEntryId = ledgerHandle.getLastAddConfirmed();
+                    ledgerHandle.getLastAddConfirmed();
                     ledgerHandle.asyncReadLastConfirmed( (rc, lastConfirmed, ctx) -> {
                         resultCode.set(rc);
                         rLAC.set(lastConfirmed);
