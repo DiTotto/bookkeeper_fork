@@ -835,4 +835,138 @@ public class LedgerHandleTest {
             }
         }
     }
+
+
+    @RunWith(Parameterized.class)
+    public static class LedgerHandleAsyncReadLastConfirmedTest extends BookKeeperClusterTestCase {
+
+        LedgerHandle ledgerHandle;
+        private final boolean expectException;
+        private final Object context;
+        private final int numOfEntry;
+        private final int expectErrorCode;
+        private final boolean useCallBack;
+
+        // Costruttore per inizializzare i parametri del test
+        public LedgerHandleAsyncReadLastConfirmedTest(boolean useCallback, int numOfEntry,
+                                                              Object context, boolean expectException, int expectedErrorCode) {
+            super(4);
+            this.expectException = expectException;
+            this.context = context;
+            this.numOfEntry = numOfEntry;
+            this.expectErrorCode = expectedErrorCode;
+
+            this.useCallBack = useCallback;
+        }
+
+
+        // Parametri del test (classi di equivalenza e boundary)
+        @Parameterized.Parameters
+        public static Collection<Object[]> data() {
+            return Arrays.asList(new Object[][]{
+                    // {useCallback, numOfEntry, context, expectException, expectedErrorCode}
+                    ///valid
+                    {true, 5, new Object(), false, BKException.Code.OK}, //callBack
+                    {false, 5, new Object(), false, BKException.Code.OK}, //no callBack
+                    {true, 0, new Object(), true, BKException.Code.NoSuchEntryException},
+                    ///invalid
+                    {true, -1, new Object(), true, BKException.Code.NoSuchEntryException},
+            });
+        }
+
+
+        @Before
+        public void setUp() throws Exception {
+            super.setUp("/ledgers");
+            ledgerHandle = bkc.createLedger(BookKeeper.DigestType.CRC32, "pwd".getBytes());
+
+            if(numOfEntry == 0){
+                return;
+            }else{
+                for (int i = 0; i < numOfEntry; i++) {
+                    ledgerHandle.addEntry(("Entry " + i).getBytes()); //entryId assume l'id della ultima entry inserita
+                }
+            }
+        }
+
+        @After
+        public void tearDownTestEnvironment() {
+            try {
+                ledgerHandle.close();
+                super.tearDown();
+            } catch (Exception e) {
+                e.printStackTrace();
+
+            }
+        }
+
+
+
+        // Test principale
+        @Test
+        public void testAsyncReadLastConfirmed() {
+            try {
+                if(useCallBack) {
+
+                    AtomicInteger resultCode = new AtomicInteger();
+                    AtomicBoolean isComplete = new AtomicBoolean(false);
+                    AtomicLong rLAC = new AtomicLong();
+                    AtomicReference<LedgerEntry> rEntry = new AtomicReference<>();
+                    long lastEntryId = ledgerHandle.getLastAddConfirmed();
+                    ledgerHandle.asyncReadLastConfirmed( (rc, lastConfirmed, ctx) -> {
+                        resultCode.set(rc);
+                        rLAC.set(lastConfirmed);
+
+                        isComplete.set(true);
+
+                        if (resultCode.get() == BKException.Code.OK) {
+                            if(!expectException)
+                                assertEquals("Expected successful read", ledgerHandle.getLastAddConfirmed(), rLAC.get());
+                            else{
+                                assertEquals("Entries should be null on failure", -1L, rLAC.get());
+                            }
+
+                        } else {
+                            assertEquals("Entries should be null on failure", -1L, rLAC.get());
+
+                        }
+
+
+                    }, context);
+
+                    //Awaitility.await().untilTrue(isComplete);
+
+
+                }else{
+                    ledgerHandle.asyncReadLastConfirmed(null, context);
+                    if (expectException) {
+                        fail("Expected exception, but method executed successfully.");
+                    }
+                }
+
+            }catch (ArrayIndexOutOfBoundsException e){
+                if (!expectException) {
+                    fail("Did not expect an exception, but got: " + e.getMessage());
+                } else {
+                    assertTrue("Expected exception, but got: " + e.getClass().getSimpleName(),
+                            e instanceof ArrayIndexOutOfBoundsException);
+                }
+            }
+            catch (NullPointerException e) {
+                if (!expectException) {
+                    fail("Did not expect an exception, but got: " + e.getMessage());
+                } else {
+                    assertTrue("Expected exception, but got: " + e.getClass().getSimpleName(),
+                            e instanceof NullPointerException);
+                }
+            } catch (Exception e) {
+                if (!expectException) {
+                    fail("Did not expect an exception, but got: " + e.getMessage());
+                } else {
+                    assertTrue("Expected exception, but got: " + e.getClass().getSimpleName(),
+                            e instanceof BKException);
+                }
+            }
+        }
+    }
 }
