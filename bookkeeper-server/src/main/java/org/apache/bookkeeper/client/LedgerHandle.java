@@ -683,8 +683,7 @@ public class LedgerHandle implements WriteHandle {
         }
 
         if (lastEntry > lastAddConfirmed) {
-            LOG.error("ReadEntries exception on ledgerId:{} firstEntry:{} lastEntry:{} lastAddConfirmed:{}",
-                    ledgerId, firstEntry, lastEntry, lastAddConfirmed);
+            LOG.error("ReadEntries exception on ledgerId:{} firstEntry:{} lastEntry:{} lastAddConfirmed:{}", ledgerId, firstEntry, lastEntry, lastAddConfirmed);
             cb.readComplete(BKException.Code.ReadException, this, null, ctx);
             return;
         }

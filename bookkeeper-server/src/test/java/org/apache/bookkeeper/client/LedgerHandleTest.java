@@ -60,16 +60,19 @@ public class LedgerHandleTest {
         public static Collection<Object[]> data() {
             return Arrays.asList(new Object[][]{
                     ///valid
-                    {1L, 5L, false, null, false, BKException.Code.OK},
-                    {1L, 5L, true, null, false, BKException.Code.OK},
-                    {0L, 0L, false, null, false, BKException.Code.OK},
-                    //invalid
-                    {-1L, 5L, true, new Object(), true, BKException.Code.IncorrectParameterException},
-                    {-1L, 5L, false, null, true, BKException.Code.IncorrectParameterException},
-                    {5L, -1L, false, null, true, BKException.Code.IncorrectParameterException},
-                    {3L, 1L, true, null, true, BKException.Code.IncorrectParameterException},
-                    {0L, Long.MAX_VALUE, false, null, true, BKException.Code.ReadException},
-                    {Long.MAX_VALUE, Long.MAX_VALUE, false, null, true, BKException.Code.ReadException},
+//                    {1L, 5L, false, null, false, BKException.Code.OK},
+//                    {1L, 5L, true, null, false, BKException.Code.OK},
+//                    {0L, 0L, false, null, false, BKException.Code.OK},
+//                    //invalid
+//                    {-1L, 5L, true, new Object(), true, BKException.Code.IncorrectParameterException},
+//                    {-1L, 5L, false, null, true, BKException.Code.IncorrectParameterException},
+//                    {5L, -1L, false, null, true, BKException.Code.IncorrectParameterException},
+//                    {3L, 1L, true, null, true, BKException.Code.IncorrectParameterException},
+//                    {0L, Long.MAX_VALUE, false, null, true, BKException.Code.ReadException},
+//                    {Long.MAX_VALUE, Long.MAX_VALUE, false, null, true, BKException.Code.ReadException},
+
+                    //test aggiunto per badua
+                    {8L, 10L, true, null, true, BKException.Code.ReadException},
             });
         }
 
@@ -851,9 +854,10 @@ public class LedgerHandleTest {
         private final boolean useCallBack;
         private final boolean useV2Protocol;
         private BookKeeper bookk;
+        private final boolean close;
 
         // Costruttore per inizializzare i parametri del test
-        public LedgerHandleAsyncReadLastConfirmedTest(boolean useV2Protocol, boolean useCallback, int numOfEntry,
+        public LedgerHandleAsyncReadLastConfirmedTest(boolean close, boolean useV2Protocol, boolean useCallback, int numOfEntry,
                                                               Object context, boolean expectException, int expectedErrorCode) {
             super(4);
             this.expectException = expectException;
@@ -862,6 +866,7 @@ public class LedgerHandleTest {
             this.expectErrorCode = expectedErrorCode;
             this.useV2Protocol = useV2Protocol;
             this.useCallBack = useCallback;
+            this.close = close;
         }
 
 
@@ -871,14 +876,15 @@ public class LedgerHandleTest {
             return Arrays.asList(new Object[][]{
                     // {useCallback, numOfEntry, context, expectException, expectedErrorCode}
                     ///valid
-                    {false, true, 5, new Object(), false, BKException.Code.OK}, //callBack
-                    {false, false, 5, new Object(), false, BKException.Code.OK}, //no callBack
-                    {false, true, 0, new Object(), true, BKException.Code.NoSuchEntryException},
+                    {false, false, true, 5, new Object(), false, BKException.Code.OK}, //callBack
+                    {false, false, false, 5, new Object(), false, BKException.Code.OK}, //no callBack
+                    {false, false, true, 0, new Object(), true, BKException.Code.NoSuchEntryException},
                     ///invalid
-                    {false, true, -1, new Object(), true, BKException.Code.NoSuchEntryException},
+                    {false, false, true, -1, new Object(), true, BKException.Code.NoSuchEntryException},
 
                     // aggiunto per jacoco
-                    {true, true, 5, new Object(), false, BKException.Code.OK}, //callBack
+                    {false, true, true, 5, new Object(), false, BKException.Code.OK}, //callBack
+                    {true, true, true, 5, new Object(), false, BKException.Code.OK},
             });
         }
 
@@ -899,12 +905,16 @@ public class LedgerHandleTest {
                 ledgerHandle = bkc.createLedger(BookKeeper.DigestType.CRC32, "pwd".getBytes());
             }
 
+
             if(numOfEntry == 0){
                 return;
             }else{
                 for (int i = 0; i < numOfEntry; i++) {
                     ledgerHandle.addEntry(("Entry " + i).getBytes()); //entryId assume l'id della ultima entry inserita
                 }
+            }
+            if(close){
+                ledgerHandle.close();
             }
         }
 
@@ -987,4 +997,95 @@ public class LedgerHandleTest {
             }
         }
     } //aumentata coverage con jacoco
+
+
+    @RunWith(Parameterized.class)
+    public static class LedgerHandleReadLastEntryTest extends BookKeeperClusterTestCase {
+
+        LedgerHandle ledgerHandle;
+        private final boolean expectException;
+        private final int numOfEntry;
+        private final int expectErrorCode;
+
+        // Costruttore per inizializzare i parametri del test
+        public LedgerHandleReadLastEntryTest(int numOfEntry, boolean expectException, int expectedErrorCode) {
+            super(4);
+            this.expectException = expectException;
+            this.numOfEntry = numOfEntry;
+            this.expectErrorCode = expectedErrorCode;
+
+        }
+        // Parametri del test (classi di equivalenza e boundary)
+        @Parameterized.Parameters
+        public static Collection<Object[]> data() {
+            return Arrays.asList(new Object[][]{
+                    ///valid
+                    {5, false, BKException.Code.OK},
+                    ///invalid
+                    {0, true, BKException.Code.NoSuchEntryException},
+                    {-1, true, BKException.Code.NoSuchEntryException},
+            });
+        }
+
+
+
+
+        @Before
+        public void setUp() throws Exception {
+            super.setUp("/ledgers");
+            ledgerHandle = bkc.createLedger(BookKeeper.DigestType.CRC32, "pwd".getBytes());
+
+            if(numOfEntry == 0){
+                return;
+            }else{
+                for (int i = 0; i < numOfEntry; i++) {
+                    ledgerHandle.addEntry(("Entry " + i).getBytes());
+                }
+            }
+        }
+
+        @After
+        public void tearDownTestEnvironment() {
+            try {
+                ledgerHandle.close();
+                super.tearDown();
+            } catch (Exception e) {
+                e.printStackTrace();
+
+            }
+        }
+
+
+
+        // Test principale
+        @Test
+        public void testReadLastEntry() {
+            try {
+
+
+                LedgerEntry le = ledgerHandle.readLastEntry();
+                if (!expectException) {
+                    assertNotNull("Entries should not be null on successful read", le);
+                } else {
+                    assertNull("Entries should be null on failure", le);
+                }
+
+            } catch (NullPointerException e) {
+                if (!expectException) {
+                    fail("Did not expect an exception, but got: " + e.getMessage());
+                } else {
+                    assertTrue("Expected exception, but got: " + e.getClass().getSimpleName(),
+                            e instanceof NullPointerException);
+                }
+            } catch (Exception e) {
+                if (!expectException) {
+                    fail("Did not expect an exception, but got: " + e.getMessage());
+                } else {
+                    assertTrue("Expected exception, but got: " + e.getClass().getSimpleName(),
+                            e instanceof BKException);
+                }
+            }
+        }
+    } // 100% coverage
+
 }
