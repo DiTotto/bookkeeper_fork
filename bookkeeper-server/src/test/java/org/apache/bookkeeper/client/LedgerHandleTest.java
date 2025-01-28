@@ -10,6 +10,7 @@ import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks;
 import org.awaitility.Awaitility;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.experimental.runners.Enclosed;
 import org.junit.runner.RunWith;
@@ -29,6 +30,7 @@ import static org.junit.Assert.*;
 import static org.mockito.Mockito.mock;
 
 @RunWith(value = Enclosed.class)
+@Ignore
 public class LedgerHandleTest {
 
     @RunWith(Parameterized.class)

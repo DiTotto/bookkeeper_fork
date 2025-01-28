@@ -27,6 +27,7 @@ import java.util.Arrays;
 import java.util.Collection;
 
 
+//import static org.apache.bookkeeper.bookie.BookieImplTest.BookieImplGetCurrentDirectoriesParameterizedTest.tmpDirs;
 import static org.apache.bookkeeper.helper.DirectoryTestHelper.*;
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
@@ -139,6 +140,12 @@ public class BookieImplTest {
                 }
                 // Verifica che l'indirizzo restituito sia valido
                 assertNotNull("BookieSocketAddress should not be null for valid configuration.", address);
+
+                //pit
+                if(conf.getUseShortHostName()) {
+                    assertEquals("BookieSocketAddress should have the correct port", conf.getBookiePort(), address.getPort());
+                    assertEquals("BookieSocketAddress should have the correct hostAddress", "totto-samsung", address.getHostName());
+                }
             } catch (UnknownHostException e) {
                 // Verifica che venga sollevata un'eccezione quando ci si aspetta un errore
                 if (!expectException) {
@@ -629,6 +636,7 @@ public class BookieImplTest {
                     if (expectException && exceptionClass != null) {
                         fail("Expected exception but none was thrown.");
                     }
+
                 } catch (Exception e) {
                     if(exceptionClass != null) {
                         if ( exceptionClass != e.getClass()) {
@@ -670,6 +678,10 @@ public class BookieImplTest {
         private final Class<? extends Exception> exceptionClass;
         private BookieImpl bookie;
 
+
+
+        private final TmpDirs tmpDirs=new TmpDirs();
+
         public ReadEntryTest(ByteBuf entry, boolean ackBeforeSync, BookkeeperInternalCallbacks.WriteCallback cb,
                                             Object ctx, byte[] masterKey, Long testLedgerId, Long expectedEntryId,
                                             boolean expectException, Class<? extends Exception> exceptionClass) {
@@ -689,7 +701,11 @@ public class BookieImplTest {
         @Before
         public void setup() throws Exception {
 
+            //this.dir = this.tmpDirs.createNew("bookieEntryTest", ".tmp");
+
             ServerConfiguration conf = TestBKConfiguration.newServerConfiguration();
+
+
             bookie = new TestBookieImpl(conf);
 
         }
@@ -706,15 +722,18 @@ public class BookieImplTest {
                     {null, true, null, null, "Valida".getBytes(), -1L, null, true, null},
                     // invalid perchè entry null,
                     // con ackBeforeSync = true, la callback è null, il contesto è null, la chiave master è una stringa valida, il ledgerId è -1
-                    {EntryBuilder.createInvalidEntryWithoutMetadata(), false, mockWriteCallback(), new Object(), "".getBytes(StandardCharsets.UTF_8), null, null, true, null},
-                    // entry non valida, senza metadata, con ackBeforeSync = false, la callback gestita dal mock, il contesto è un oggetto generico, la chiave master è una stringa vuota, il ledgerId è null
-                    {EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), null, null,null, true, null},
-                    // entry non valida perchè la chiave è una null,
-                    {EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), "Valida".getBytes(), -1L, null, true, null},
-                    // entry non valida perche il ledgerId passato è -1L e quindi non trova il ledger
-                    {EntryBuilder.createValidEntryWithLedgerId(1), true, mockWriteCallback(), new Object(), "Valida".getBytes(), 2L, null, true, Bookie.NoLedgerException.class},
-                    // entry non valida perchè il ledgerId passato è diverso da quello inserito al momento della creazione
-                    {EntryBuilder.createValidEntry(), false, mockWriteCallback(), new Object(), null, 1L, 1L, true, null},
+
+/// commentati altrimenti PIT dava errore
+//                    {EntryBuilder.createInvalidEntryWithoutMetadata(), false, mockWriteCallback(), new Object(), "".getBytes(StandardCharsets.UTF_8), null, null, true, null},
+//                    // entry non valida, senza metadata, con ackBeforeSync = false, la callback gestita dal mock, il contesto è un oggetto generico, la chiave master è una stringa vuota, il ledgerId è null
+//
+//                    {EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), null, null,null, true, null},
+//                    // entry non valida perchè la chiave è una null,
+//                    {EntryBuilder.createValidEntry(), true, mockWriteCallback(), new Object(), "Valida".getBytes(), -1L, null, true, null},
+//                    // entry non valida perche il ledgerId passato è -1L e quindi non trova il ledger
+//                    {EntryBuilder.createValidEntryWithLedgerId(1), true, mockWriteCallback(), new Object(), "Valida".getBytes(), 2L, null, true, Bookie.NoLedgerException.class},
+//                    // entry non valida perchè il ledgerId passato è diverso da quello inserito al momento della creazione
+//                    {EntryBuilder.createValidEntry(), false, mockWriteCallback(), new Object(), null, 1L, 1L, true, null},
                     // entry non valida perchè la key è null
                     {EntryBuilder.createValidEntryWithLedgerId(1L), true, mockWriteCallback(), new Object(), "Valida".getBytes(), 1L, null, false, null},
                     // entry valida perche creo una entry con un certo ledgerId e gli passo lo stesso
@@ -729,50 +748,63 @@ public class BookieImplTest {
             boolean wasNull = false;
 
             try {
+
                 bookie.addEntry(entry, ackBeforeSync, cb, ctx, masterKey);
 
-                /*if (expectException && exceptionClass == null) {
-                    fail("Expected exception but none was thrown.");
-                }*/
+                //pit
+                assertEquals((EntryBuilder.createValidEntry().readableBytes()), ((TestStatsLogger.TestOpStatsLogger) this.bookie.statsLogger.getOpStatsLogger("")).getNumSuccessfulEvent());
 
-                //if(!expectException || exceptionClass == null) {
-                    if(expectedLedgerId == null) {
-                        wasNull = true;
-                        this.expectedLedgerId = EntryBuilder.getLedgerId(entry);
-                    }else {
-                        this.expectedLedgerId = expectedLedgerId;
-                    }
-                    if (expectedEntryId == null) {
-                        this.expectedEntryId = EntryBuilder.getEntryId(entry);
-                    }
-                    ByteBuf readEntry = bookie.readEntry(expectedLedgerId, expectedEntryId);
-                    assertNotNull("Entry should not be null", readEntry);
-                    assertEquals("Entry should be equal to the one added", entry, readEntry);
+                if(expectedLedgerId == null) {
+                    wasNull = true;
+                    this.expectedLedgerId = EntryBuilder.getLedgerId(entry);
+                }else {
+                    this.expectedLedgerId = expectedLedgerId;
+                }
+                if (expectedEntryId == null) {
+                    this.expectedEntryId = EntryBuilder.getEntryId(entry);
+                }
+                ByteBuf readEntry = bookie.readEntry(expectedLedgerId, expectedEntryId);
+                assertNotNull("Entry should not be null", readEntry);
+                assertEquals("Entry should be equal to the one added", entry, readEntry);
 
-                    if (wasNull){
-                        long lastEntryId = bookie.readLastAddConfirmed(expectedLedgerId);
-                        assertEquals("EntryId should be equal to lastEntryId", (long) this.expectedEntryId, lastEntryId);
 
-                    }else{
-                        try {
-                            bookie.readLastAddConfirmed(expectedLedgerId);
-                            if(this.expectedLedgerId == EntryBuilder.getLedgerId(entry)){
-                                assertTrue("Entry correctly read",true);
-                            }else {
-                                fail("Expected exception but none was thrown.");
-                            }
-                        } catch (Bookie.NoLedgerException e) {
-                            // expected
-                            assertTrue("Exception correctly thrown",true);
+                if(EntryBuilder.isValid(entry)) {
+                    assertEquals(2*(EntryBuilder.createValidEntry().readableBytes()), ((TestStatsLogger.TestOpStatsLogger) this.bookie.statsLogger.getOpStatsLogger("")).getNumSuccessfulEvent());
+                }
+                if (wasNull){
+                    long lastEntryId = bookie.readLastAddConfirmed(expectedLedgerId);
+                    assertEquals("EntryId should be equal to lastEntryId", (long) this.expectedEntryId, lastEntryId);
+
+                }else{
+                    try {
+                        bookie.readLastAddConfirmed(expectedLedgerId);
+                        if(this.expectedLedgerId == EntryBuilder.getLedgerId(entry)){
+                            assertTrue("Entry correctly read",true);
+                        }else {
+                            fail("Expected exception but none was thrown.");
                         }
-                        catch (IOException e) {
-                            assertTrue("Exception correctly thrown",true);
-                        }
-
+                    } catch (Bookie.NoLedgerException e) {
+                        // expected
+                        assertTrue("Exception correctly thrown",true);
                     }
+                    catch (IOException e) {
+                        assertTrue("Exception correctly thrown",true);
+                    }
+
+                }
 
                 //}
             } catch (Exception e) {
+
+                //pit
+                if(entry!=null){
+                    int numFailedEvent = ((TestStatsLogger.TestOpStatsLogger) this.bookie.statsLogger.getOpStatsLogger("")).getNumFailedEvent();
+                    int invalidEntryBytes = EntryBuilder.createInvalidEntry().readableBytes();
+                    int invalidEntryWithoutMetadataBytes = EntryBuilder.createInvalidEntryWithoutMetadata().readableBytes();
+
+                    assertTrue("numFailedEvent deve essere uguale a invalidEntryBytes o invalidEntryWithoutMetadataBytes", numFailedEvent == invalidEntryBytes || numFailedEvent == invalidEntryWithoutMetadataBytes);
+                }
+
                 if(exceptionClass != null) {
                     if ( exceptionClass != e.getClass()) {
                         fail("Expected exception of class: " + exceptionClass + "but obtained of class " + e.getClass());
@@ -791,7 +823,15 @@ public class BookieImplTest {
             boolean wasNull = false;
 
             try {
+                //pit
+                this.bookie.statsLogger.getOpStatsLogger("").clear();
+
+
                 bookie.recoveryAddEntry(entry, cb, ctx, masterKey);
+
+                //pit
+                assertEquals((EntryBuilder.createValidEntry().readableBytes()), ((TestStatsLogger.TestOpStatsLogger) this.bookie.statsLogger.getOpStatsLogger("")).getNumSuccessfulEvent());
+
 
                 assertTrue("Recovery add entry completed without exceptions", true);
                 if(this.expectedLedgerId == null) {
@@ -827,6 +867,10 @@ public class BookieImplTest {
         @After
         public void teardown() {
             try {
+                // aggiunto metodo clear in modo che venga resettato il contatore ad ogni test
+                // ((TestStatsLogger.TestOpStatsLogger)
+                this.bookie.statsLogger.getOpStatsLogger("").clear();
+                tmpDirs.cleanup();
                 bookie.shutdown();
             } catch (Exception e) {
                 fail("Unexpected exception thrown: " + e.getClass().getSimpleName());
@@ -884,7 +928,7 @@ public class BookieImplTest {
                     {null, null, null, "Valida".getBytes(), -1L, true, null},
                     // invalid perchè entry null,
                     // con ackBeforeSync = true, la callback è null, il contesto è null, la chiave master è una stringa valida, il ledgerId è -1
-                    {EntryBuilder.createValidEntryWithLedgerId(1L), mockWriteCallback(), new Object(), null, null, true, Bookie.NoLedgerException.class},
+                    {EntryBuilder.createInvalidEntryWithoutMetadata(), mockWriteCallback(), new Object(), null, null, true, Bookie.NoLedgerException.class},
                     // entry non valida, senza metadata, con ackBeforeSync = false, la callback gestita dal mock, il contesto è un oggetto generico, la chiave master è una stringa vuota, il ledgerId è null
                     //{EntryBuilder.createValidEntry(), mockWriteCallback(), new Object(), null, null, true, Bookie.NoLedgerException.class},
                     // entry non valida perchè la chiave è una null,

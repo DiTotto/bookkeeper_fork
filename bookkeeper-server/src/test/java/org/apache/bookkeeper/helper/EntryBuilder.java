@@ -122,4 +122,33 @@ public class EntryBuilder {
             entry.readerIndex(pointer);
         }
     }
+
+    public static boolean isValid(ByteBuf entry) {
+        int readableBytes = entry.readableBytes();
+        int metadataSize = Long.BYTES * 3;
+        byte[] validAuth = "Valid".getBytes();
+        byte[] validData = "Valid".getBytes();
+
+        if (readableBytes >= metadataSize + validAuth.length + validData.length) {
+            int readerIndex = entry.readerIndex();
+            try {
+                entry.readerIndex(metadataSize);
+
+
+                byte[] data = new byte[validData.length];
+                entry.readBytes(data);
+                if (!new String(data).equals(new String(validData))) {
+                    return false;
+                }
+
+
+                byte[] auth = new byte[validAuth.length];
+                entry.readBytes(auth);
+                return new String(auth).equals(new String(validAuth));
+            } finally {
+                entry.readerIndex(readerIndex);
+            }
+        }
+        return false;
+    }
 }

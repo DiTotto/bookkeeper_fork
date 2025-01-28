@@ -45,6 +45,8 @@ public class TestStatsLogger implements StatsLogger {
         @Override
         public void clear() {
             // nop
+            // added by me
+            this.numSuccessfulEvent = 0;
         }
 
         public int getNumSuccessfulEvent(){
