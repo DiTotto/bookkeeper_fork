@@ -42,6 +42,7 @@ import org.apache.logging.log4j.Level;
 import io.netty.buffer.Unpooled;
 
 @RunWith(value = Enclosed.class)
+//@Ignore
 public class BookieImplTest {
 
 

@@ -467,12 +467,12 @@
             <version>${pitest.version}</version>
             <configuration>
               <targetClasses>
-                <param>org.apache.bookkeeper.bookie.BookieImpl</param>
-<!--                <param>org.apache.bookkeeper.client.LedgerHandle</param>-->
+<!--                <param>org.apache.bookkeeper.bookie.BookieImpl</param>-->
+                <param>org.apache.bookkeeper.client.LedgerHandle</param>
               </targetClasses>
               <targetTests>
-                <param>org.apache.bookkeeper.bookie.BookieImplTest</param>
-<!--                <param>org.apache.bookkeeper.client.LedgerHandleTest</param>-->
+<!--                <param>org.apache.bookkeeper.bookie.BookieImplTest</param>-->
+                <param>org.apache.bookkeeper.client.LedgerHandleTest</param>
               </targetTests>
               <avoidCallsTo>
                 <avoidCallsTo>org.slf4j</avoidCallsTo>

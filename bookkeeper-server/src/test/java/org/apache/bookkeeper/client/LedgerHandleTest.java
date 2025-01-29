@@ -30,9 +30,8 @@ import static org.junit.Assert.*;
 import static org.mockito.Mockito.mock;
 
 @RunWith(value = Enclosed.class)
-@Ignore
 public class LedgerHandleTest {
-
+//    @Ignore
     @RunWith(Parameterized.class)
     public static class LedgerHandleAsyncReadEntriesTest extends BookKeeperClusterTestCase {
 
@@ -206,6 +205,7 @@ public class LedgerHandleTest {
             return Arrays.asList(new Object[][]{
                     ///valid
                     {true, 5, mockReadCallback(), new Object(), false, BKException.Code.OK},
+                    {true, 1, mockReadCallback(), new Object(), false, BKException.Code.OK},
                     {false, 5, mockReadCallback(), new Object(), false, BKException.Code.OK},
                     //invalid
                     {true, 0, mockReadCallback(), new Object(), true, BKException.Code.NoSuchEntryException},
@@ -252,8 +252,12 @@ public class LedgerHandleTest {
                     AtomicBoolean isComplete = new AtomicBoolean(false);
                     ledgerHandle.asyncReadLastEntry((rc, lh, entries, ctx) -> {
                         resultCode.set(rc);
+
                         if (rc == BKException.Code.OK) {
                             assertNotNull("Entries should not be null on successful read", entries);
+
+                            //pit
+                            assertTrue("Last entry should be <= lastAddConfirmed", entries.nextElement().entryId <= ledgerHandle.getLastAddConfirmed());
                         } else {
                             assertEquals("Unexpected error code", expectErrorCode, rc);
                         }
@@ -263,6 +267,7 @@ public class LedgerHandleTest {
                         assertEquals("Expected successful read", BKException.Code.OK, resultCode.get());
                     } else {
                         assertEquals("Expected failure with specific error code", expectErrorCode, resultCode.get());
+
                     }
                 }else{
                     ledgerHandle.asyncReadLastEntry(null, context);
@@ -289,7 +294,7 @@ public class LedgerHandleTest {
         }
     } // 100% coverage
 
-
+//    @Ignore
     @RunWith(Parameterized.class)
     public static class LedgerHandleAsyncReadLastConfirmedAndEntryTest extends BookKeeperClusterTestCase {
 
@@ -464,6 +469,7 @@ public class LedgerHandleTest {
             }
         }
     } //aumentata coverage con jacoco
+//    @Ignore
     @RunWith(Parameterized.class)
     public static class LedgerHandleAsyncReadTest extends BookKeeperClusterTestCase {
 
@@ -494,16 +500,11 @@ public class LedgerHandleTest {
 //                    {0L, 0L, false,  false, BKException.Code.OK},
 //                    //invalid
                     {7L, 1L, 12L,   true},
+                    {7L, 6L, 12L,   true},
                     {7L, -1L, 12L,   true},
                     {7L, 1L, -5L,   true},
-                    {7L, 7L, 5L,   true},
+                    {7L, 8L, 5L,   true},
                     {7L, -1L, Long.MAX_VALUE,   true},
-//                    {-1L, 5L, true,  true, BKException.Code.IncorrectParameterException},
-//                    {-1L, 5L, false,  true, BKException.Code.IncorrectParameterException},
-//                    {5L, -1L, false,  true, BKException.Code.IncorrectParameterException},
-//                    {3L, 1L, true,  true, BKException.Code.IncorrectParameterException},
-//                    {0L, Long.MAX_VALUE, false,  true, BKException.Code.ReadException},
-//                    {Long.MAX_VALUE, Long.MAX_VALUE, false,  true, BKException.Code.ReadException},
             });
         }
 
@@ -542,29 +543,44 @@ public class LedgerHandleTest {
 
 
                 CompletableFuture<LedgerEntries> entries = ledgerHandle.readAsync(firstEntry, lastEntry);
-                entries.whenComplete((ledgerEntries, throwable) -> {
-                    if (throwable != null) {
-                        if (expectException) {
-                            assert (throwable instanceof BKException);
+                try {
+                    entries.whenComplete((ledgerEntries, throwable) -> {
+                        if (throwable != null) {
 
-                            //assertTrue("Expected exception, but got: " + throwable.getClass().getSimpleName(),
-                                    //throwable instanceof BKException);
+                            //pit
+                            if (lastEntry <= ledgerHandle.lastAddConfirmed) {
+                                fail("Unexpected exception: lastEntry is less than or equal to lastAddConfirmed, but got an error: " + throwable.getMessage());
+                            }
+                            if (expectException) {
+                                assert (throwable instanceof BKException);
+                                //assertTrue("Expected exception, but got: " + throwable.getClass().getSimpleName(),
+                                //throwable instanceof BKException);
+                            } else {
+                                fail("Did not expect an exception, but got: " + throwable.getMessage());
+                            }
                         } else {
-                            fail("Did not expect an exception, but got: " + throwable.getMessage());
+                            assertNotNull("Entries should not be null on successful read", ledgerEntries);
+                            assertNotNull("Entries should contain at least one element", entries);
+                            assertNotNull("Entries should not be null on successful read", entries.join());
+                            //assertTrue("Entries should contain at least one element", entries.join());
+                            long countEntries = 0L;
+                            LedgerEntries ledgerEntries1 = entries.join();
+                            for (org.apache.bookkeeper.client.api.LedgerEntry entry : ledgerEntries1) {
+                                countEntries++;
+                                System.out.println("EntryId: " + entry.getEntryId());
+                            }
+                            assertEquals("Entries should contain exactly " + (lastEntry - firstEntry + 1) + " elements",
+                                    (lastEntry - firstEntry + 1), countEntries);
                         }
+                    }).join(); //pit, join() per aspettare la fine del completamento altrimenti non veniva catturata la fail
+                } catch (CompletionException e) {
+                    if (!expectException) {
+                        fail("Did not expect an exception, but got: " + e.getMessage());
                     } else {
-                        assertNotNull("Entries should not be null on successful read", entries.join());
-                       //assertTrue("Entries should contain at least one element", entries.join());
-                        long countEntries = 0L;
-                        LedgerEntries ledgerEntries1 = entries.join();
-                        for (org.apache.bookkeeper.client.api.LedgerEntry entry : ledgerEntries1) {
-                            countEntries++;
-                            System.out.println("EntryId: " + entry.getEntryId());
-                        }
-                        assertEquals("Entries should contain exactly " + (lastEntry - firstEntry + 1) + " elements",
-                                (lastEntry - firstEntry + 1), countEntries);
+                        assertTrue("Expected exception, but got: " + e.getClass().getSimpleName(),
+                                e instanceof CompletionException);
                     }
-                });
+                }
 
             } catch (CompletionException e) {
                 if (!expectException) {
@@ -591,7 +607,7 @@ public class LedgerHandleTest {
             }
         }
     } //100% coverage
-
+//    @Ignore
     @RunWith(Parameterized.class)
     public static class LedgerHandleReadLastConfirmedTest extends BookKeeperClusterTestCase {
 
@@ -702,7 +718,7 @@ public class LedgerHandleTest {
             }
         }
     } //forse si puo aumentare coverage
-
+//    @Ignore
     @RunWith(Parameterized.class)
     public static class LedgerHandleAsyncAddEntryTest extends BookKeeperClusterTestCase {
 
@@ -844,7 +860,7 @@ public class LedgerHandleTest {
         }
     } //controllato con jacoco
 
-
+//    @Ignore
     @RunWith(Parameterized.class)
     public static class LedgerHandleAsyncReadLastConfirmedTest extends BookKeeperClusterTestCase {
 
@@ -1000,7 +1016,7 @@ public class LedgerHandleTest {
         }
     } //aumentata coverage con jacoco
 
-
+//    @Ignore
     @RunWith(Parameterized.class)
     public static class LedgerHandleReadLastEntryTest extends BookKeeperClusterTestCase {
 
@@ -1023,6 +1039,7 @@ public class LedgerHandleTest {
             return Arrays.asList(new Object[][]{
                     ///valid
                     {5, false, BKException.Code.OK},
+                    {1, false, BKException.Code.OK},
                     ///invalid
                     {0, true, BKException.Code.NoSuchEntryException},
                     {-1, true, BKException.Code.NoSuchEntryException},
