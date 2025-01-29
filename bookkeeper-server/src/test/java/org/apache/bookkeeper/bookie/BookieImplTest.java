@@ -213,6 +213,7 @@ public class BookieImplTest {
                 BookieId bookieId = BookieImpl.getBookieId(conf);
 
                 // Verifica che non venga sollevata un'eccezione quando non ci si aspetta errori
+                System.out.println("Run with: " + conf.getAdvertisedAddress() + " " + conf.getBookieId() + "" + expectException);
                 if (expectException) {
                     fail("Expected an exception, but none was thrown.");
                 }
