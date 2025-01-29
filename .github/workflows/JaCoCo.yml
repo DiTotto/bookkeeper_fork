@@ -19,7 +19,14 @@ jobs:
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'  
-          java-version: '8'       
+          java-version: '8'  
+      # Step 2.1: Controlla versioni
+      - name: Check Java version
+        run: java -version
+
+      - name: Check Maven version
+        run: mvn -v
+
       # Step 3: Cache delle dipendenze Maven (facoltativo, per ottimizzare il tempo di build)
       - name: Cache Maven dependencies
         uses: actions/cache@v3
