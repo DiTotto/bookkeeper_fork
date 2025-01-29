@@ -1,0 +1,49 @@
+name: Pit coverage
+
+on:
+  push:
+    branches:
+      - '*'  # O la branch su cui vuoi triggerare i test
+
+jobs:
+  test-jacoco:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout del codice sorgente
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Step 2: Configurazione di Java
+      - name: Set up JDK 1.8
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'  
+          java-version: '8'  
+      # Step 2.1: Controlla versioni
+      - name: Check Java version
+        run: java -version
+
+      - name: Check Maven version
+        run: mvn -v
+
+      # Step 3: Cache delle dipendenze Maven (facoltativo, per ottimizzare il tempo di build)
+      - name: Cache Maven dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven
+
+      # Step 4: Compilazione del progetto
+      - name: Build and test the project
+        run: mvn -B verify -P mutation-testing
+
+     # Upload Jacoco Coverage Report
+      - name: Upload PIT Mutation Testing Report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: pit-mutation-testing-report
+          path: bookkeeper-server/target/pit-reports/**
