@@ -21,8 +21,8 @@ on:
   pull_request:
     branches:
       - noone
-    paths:
-      - '**.md'
+    #paths:
+      #- '**.md'
 
 concurrency:
   group: dlc-${{ github.event.pull_request.number || github.ref }}
