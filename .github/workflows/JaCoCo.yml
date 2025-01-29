@@ -1,4 +1,4 @@
-name: BookieImpl test
+name: JaCoCo coverage
 
 on:
   push:
