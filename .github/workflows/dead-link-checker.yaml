@@ -18,6 +18,8 @@ name: Dead link checker
 
 on:
   push:
+    branches:
+      - noone
   pull_request:
     branches:
       - noone
