@@ -6,7 +6,7 @@ on:
       - '*'  # O la branch su cui vuoi triggerare i test
 
 jobs:
-  test-jacoco:
+  test-badua:
     runs-on: ubuntu-latest
 
     steps:
@@ -43,7 +43,7 @@ jobs:
      # Upload Jacoco Coverage Report
       - name: Upload Ba-dua Coverage Report
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ba-dua-coverage-report
           path: bookkeeper-server/target/badua.xml
