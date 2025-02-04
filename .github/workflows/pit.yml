@@ -43,7 +43,7 @@ jobs:
      # Upload Jacoco Coverage Report
       - name: Upload PIT Mutation Testing Report
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: pit-mutation-testing-report
           path: bookkeeper-server/target/pit-reports/**
