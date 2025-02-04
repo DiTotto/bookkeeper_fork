@@ -748,7 +748,6 @@ public class BookieImplTest {
         @Test
         public void testReadAndAddEntry() {
             boolean wasNull = false;
-
             try {
 
                 bookie.addEntry(entry, ackBeforeSync, cb, ctx, masterKey);
