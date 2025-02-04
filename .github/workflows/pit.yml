@@ -6,7 +6,7 @@ on:
       - '*'  # O la branch su cui vuoi triggerare i test
 
 jobs:
-  test-jacoco:
+  test-pit:
     runs-on: ubuntu-latest
 
     steps:
